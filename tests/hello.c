@@ -1,5 +1,18 @@
 #include <stdio.h>
 
+int number = 42;
+int *pointer = &number;
+char kedo_memory[1024];
+int memory_used = 0;
+char *kmalloc(int size)
+{
+    char *address;
+
+    address = &kedo_memory[memory_used];
+    memory_used += size;
+
+    return address;
+}
 void kinput(char buffer[], int size)
 {
     int i = 0;
@@ -48,9 +61,20 @@ int strings_equal(char a[], char b[])
 
     return a[i] == b[i];
 }
+char command[100];
+char *command_pointer = command;
 int main(void)
 {
-    char command[100];
+  char *thing = kmalloc(10);
+
+thing[0] = 'K';
+thing[1] = 'E';
+thing[2] = 'D';
+thing[3] = 'O';
+thing[4] = '\0';
+
+kprint(thing);
+kprint("\n");  
 
 while (1)
 {
