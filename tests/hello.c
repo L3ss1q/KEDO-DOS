@@ -54,11 +54,11 @@ while (1)
 {
     kprint("KEDO> ");
     kinput(command, sizeof(command));
-    if (strings_equal(command, "hello\n"))
+    if (strings_equal(command, "hello"))
     {
         command_hello();
     }
-    else if (strings_equal(command, "help\n"))
+    else if (strings_equal(command, "help"))
     {
       
         kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    literally anything else: no :3\n");
