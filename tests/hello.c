@@ -8,7 +8,10 @@ void kinput(char buffer[], int size)
     while (i < size - 1)
     {
         character = getchar();
-
+if (character == EOF)
+{
+    return;
+}
         if (character == '\n')
         {
             break;
