@@ -1,7 +1,6 @@
 #include <stdio.h>
+
 void kinput(char buffer[], int size)
-{
-    void kinput(char buffer[], int size)
 {
     int i = 0;
     int character;
@@ -21,7 +20,7 @@ void kinput(char buffer[], int size)
 
     buffer[i] = '\0';
 }
-}
+
 void kprint(char text[])
 {
     printf("%s", text);
