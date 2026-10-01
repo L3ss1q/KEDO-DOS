@@ -7,8 +7,11 @@ int main(void)
     while (1)
     {
         printf("KEDO> ");
-        fgets(command, sizeof(command), stdin);
+fgets(command, sizeof(command), stdin);
 
-        printf("You entered: %s", command);
+if (strcmp(command, "hello\n") == 0)
+{
+    printf("Hello!\n");
+}
     }
 }
