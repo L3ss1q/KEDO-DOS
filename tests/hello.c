@@ -13,6 +13,12 @@ char *kmalloc(int size)
 
     return address;
 }
+struct MemoryBlock
+{
+    char *address;
+    int size;
+int size;
+};
 void kinput(char buffer[], int size)
 {
     int i = 0;
@@ -75,7 +81,23 @@ thing[4] = '\0';
 
 kprint(thing);
 kprint("\n");  
+struct MemoryBlock block;
 
+block.address = kmalloc(10);
+block.size = 10;
+block.used = 1;
+
+block.address[0] = 'K';
+block.address[1] = 'E';
+block.address[2] = 'D';
+block.address[3] = 'O';
+block.address[4] = '\0';
+
+printf("%s\n", block.address);
+printf("Size: %d\n", block.size);
+printf("Used: %d\n", block.used);
+    block.used = 0;
+    
 while (1)
 {
     kprint("KEDO> ");
