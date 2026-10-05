@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stddef.h>
 // robus 🤖
 int number = 42;
 int *pointer = &number;
@@ -8,18 +9,51 @@ struct MemoryBlock
 {
     char *address;
     int size;
+    int isFree;
 
 };
+struct MemoryBlock blocks[32];
+int block_count = 0;
 struct MemoryBlock kmalloc(int size)
 {
+    if (size <= 0)
+    {
+        struct MemoryBlock invalid = {NULL, 0, 1};
+        return invalid;
+    }
+
+    for (int i = 0; i < block_count; i++)
+    {
+        if (blocks[i].isFree && blocks[i].size >= size)
+        {
+            blocks[i].isFree = 0;
+            return blocks[i];
+        }
+    }
+
     struct MemoryBlock block;
 
     block.address = &kedo_memory[memory_used];
     block.size = size;
+    block.isFree = 0;
 
     memory_used += size;
 
+    blocks[block_count] = block;
+    block_count++;
+
     return block;
+}
+void kfree(struct MemoryBlock *block)
+{
+    for (int i = 0; i < block_count; i++)
+    {
+        if (blocks[i].address == block->address)
+        {
+            blocks[i].isFree = 1;
+            return;
+        }
+    }
 }
 void kinput(char buffer[], int size)
 {
@@ -73,15 +107,9 @@ char command[100];
 char *command_pointer = command;
 int main(void)
 {
-  
-
-
 
 kprint("\n");  
-struct MemoryBlock block = kmalloc(10);
 
-printf("Address: %p\n", block.address);
-printf("Size: %d\n", block.size);
 while (1)
 {
     kprint("KEDO> ");
