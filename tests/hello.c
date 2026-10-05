@@ -73,15 +73,10 @@ char command[100];
 char *command_pointer = command;
 int main(void)
 {
-  char *thing = kmalloc(10);
+  
 
-thing[0] = 'K';
-thing[1] = 'E';
-thing[2] = 'D';
-thing[3] = 'O';
-thing[4] = '\0';
 
-kprint(thing);
+
 kprint("\n");  
 struct MemoryBlock block = kmalloc(10);
 
