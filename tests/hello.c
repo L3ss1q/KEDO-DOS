@@ -1,5 +1,5 @@
 #include <stdio.h>
-
+// robus 🤖
 int number = 42;
 int *pointer = &number;
 char kedo_memory[1024];
