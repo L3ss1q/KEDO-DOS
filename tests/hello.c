@@ -24,19 +24,7 @@ struct KedoConfig config =
     1,
     1
 };
-void kpanic(char error[])
-{
-    kprint("\n");
-    kprint("KEDO KERNEL PANIC\n");
-    kprint("Error: ");
-    kprint(error);
-    kprint("\n");
-    kprint("System halted.\n");
 
-    while (1)
-    {
-    }
-}
 struct MemoryBlock blocks[32];
 int block_count = 0;
 
@@ -130,6 +118,19 @@ if (character == EOF)
 void kprint(char text[])
 {
     printf("%s", text);
+}
+void kpanic(char error[])
+{
+    kprint("\n");
+    kprint("KEDO KERNEL PANIC\n");
+    kprint("Error: ");
+    kprint(error);
+    kprint("\n");
+    kprint("System halted.\n");
+
+    while (1)
+    {
+    }
 }
 void command_hello(void)
 {
