@@ -126,8 +126,35 @@ int strings_equal(char a[], char b[])
 
     return a[i] == b[i];
 }
+void kmeminfo(void)
+{
+    int free_memory = sizeof(kedo_memory) - memory_used;
+    int active_blocks = 0;
+    int free_blocks = 0;
+
+    for (int i = 0; i < block_count; i++)
+    {
+        if (blocks[i].isFree)
+        {
+            free_blocks++;
+        }
+        else
+        {
+            active_blocks++;
+        }
+    }
+
+    printf("Memory pool: %zu bytes\n", sizeof(kedo_memory));
+    printf("Memory used: %d bytes\n", memory_used);
+    printf("Memory available: %d bytes\n", free_memory);
+    printf("Active blocks: %d\n", active_blocks);
+    printf("Free blocks: %d\n", free_blocks);
+}
 char command[100];
 char *command_pointer = command;
+/********
+    FUCKING MAIN BITCH
+********/
 int main(void)
 {
 
@@ -144,12 +171,24 @@ while (1)
     else if (strings_equal(command, "help"))
     {
       
-        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    literally anything else: no :3\n");
+        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    literally anything else: no :3\n");
     }
         else if(strings_equal(command, "ver"))
         {
             kprint("kedo dos version 2.12132034+2.12132034i\n");
         }
+            else if(strings_equal(command, "advcom")
+            {
+                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n");
+            }
+                else if(strings_equal(command, "fr"))
+                {
+                    return 1;
+                }
+                    else if (strings_equal(command, "meminfo"))
+{
+    kmeminfo();
+}
     else
     {
         kprint("Unknown command. Try one that is in the designated dictionary [help]\n");
