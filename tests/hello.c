@@ -258,7 +258,7 @@ while (1)
 }
                                 else if(strings_equal(command, "lcon"))
                                 {
-                                    kprint("rebootOnCrash = %d\nshutdownConfirm = %d\nsoundEnabled = %d\n", config.reboot_on_crash, config.shutdown_confirm, config.sound_enabled);
+                                    kprint("here, take a \\n.\n");
                                 }
     else
     {
