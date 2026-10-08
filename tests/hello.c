@@ -177,7 +177,7 @@ while (1)
         {
             kprint("kedo dos version 2.12132034+2.12132034i\n");
         }
-            else if(strings_equal(command, "advcom")
+            else if(strings_equal(command, "advcom"))
             {
                 kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n");
             }
