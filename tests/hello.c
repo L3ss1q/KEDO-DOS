@@ -150,6 +150,40 @@ void kmeminfo(void)
     printf("Active blocks: %d\n", active_blocks);
     printf("Free blocks: %d\n", free_blocks);
 }
+void kmemtest(void)
+{
+    struct MemoryBlock test;
+
+    kprint("Running memory test...\n");
+
+    test = kmalloc(16);
+
+    if (test.address == NULL)
+    {
+        kprint("FAIL: allocation\n");
+        return;
+    }
+
+    kprint("PASS: allocation\n");
+
+    kfree(&test);
+
+    kprint("PASS: free\n");
+
+    test = kmalloc(16);
+
+    if (test.address == NULL)
+    {
+        kprint("FAIL: reuse\n");
+        return;
+    }
+
+    kprint("PASS: memory reuse\n");
+
+    kfree(&test);
+
+    kprint("Memory test complete.\n");
+}
 char command[100];
 char *command_pointer = command;
 /********
@@ -179,7 +213,7 @@ while (1)
         }
             else if(strings_equal(command, "advcom"))
             {
-                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n");
+                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n    memtest: performs a memory test\n");
             }
                 else if(strings_equal(command, "fr"))
                 {
@@ -189,6 +223,10 @@ while (1)
 {
     kmeminfo();
 }
+                        else if(strings_equal(command, "memtest"))
+                        {
+                            kmemtest();
+                        }
     else
     {
         kprint("Unknown command. Try one that is in the designated dictionary [help]\n");
