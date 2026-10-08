@@ -78,17 +78,6 @@ void kfree(struct MemoryBlock *block)
         }
     }
 }
-void kfree(struct MemoryBlock *block)
-{
-    for (int i = 0; i < block_count; i++)
-    {
-        if (blocks[i].address == block->address)
-        {
-            blocks[i].isFree = 1;
-            return;
-        }
-    }
-}
 void kinput(char buffer[], int size)
 {
     int i = 0;
