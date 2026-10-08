@@ -5,6 +5,12 @@ int number = 42;
 int *pointer = &number;
 char kedo_memory[1024];
 int memory_used = 0;
+struct KedoConfig
+{
+    int reboot_on_crash;
+    int shutdown_confirm;
+    int sound_enabled;
+};
 struct MemoryBlock
 {
     char *address;
@@ -12,6 +18,25 @@ struct MemoryBlock
     int isFree;
 
 };
+struct KedoConfig config =
+{
+    1,
+    1,
+    1
+};
+void kpanic(char error[])
+{
+    kprint("\n");
+    kprint("KEDO KERNEL PANIC\n");
+    kprint("Error: ");
+    kprint(error);
+    kprint("\n");
+    kprint("System halted.\n");
+
+    while (1)
+    {
+    }
+}
 struct MemoryBlock blocks[32];
 int block_count = 0;
 
@@ -213,7 +238,7 @@ while (1)
         }
             else if(strings_equal(command, "advcom"))
             {
-                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n    memtest: performs a memory test\n");
+                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n    memtest: performs a memory test\n    panic [SYS]: causes a panic\n    lcon: displays current system configuration\n");
             }
                 else if(strings_equal(command, "fr"))
                 {
@@ -227,6 +252,14 @@ while (1)
                         {
                             kmemtest();
                         }
+                            else if (strings_equal(command, "sys panic -bcd"))
+{
+    kpanic("BCD - Bad Configuration Data");
+}
+                                else if(strings_equal(command, "lcon"))
+                                {
+                                    kprint("rebootOnCrash = %d\nshutdownConfirm = %d\nsoundEnabled = %d\n", config.reboot_on_crash, config.shutdown_confirm, config.sound_enabled);
+                                }
     else
     {
         kprint("Unknown command. Try one that is in the designated dictionary [help]\n");
