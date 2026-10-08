@@ -14,14 +14,17 @@ struct MemoryBlock
 };
 struct MemoryBlock blocks[32];
 int block_count = 0;
+
 struct MemoryBlock kmalloc(int size)
 {
+    struct MemoryBlock invalid = {NULL, 0, 1};
+
     if (size <= 0)
     {
-        struct MemoryBlock invalid = {NULL, 0, 1};
         return invalid;
     }
 
+    // First, try to reuse freed memory.
     for (int i = 0; i < block_count; i++)
     {
         if (blocks[i].isFree && blocks[i].size >= size)
@@ -29,6 +32,18 @@ struct MemoryBlock kmalloc(int size)
             blocks[i].isFree = 0;
             return blocks[i];
         }
+    }
+
+    // Do not exceed the block table.
+    if (block_count >= 32)
+    {
+        return invalid;
+    }
+
+    // Do not exceed the memory pool.
+    if (size > (int)sizeof(kedo_memory) - memory_used)
+    {
+        return invalid;
     }
 
     struct MemoryBlock block;
@@ -43,6 +58,25 @@ struct MemoryBlock kmalloc(int size)
     block_count++;
 
     return block;
+}
+
+void kfree(struct MemoryBlock *block)
+{
+    if (block == NULL || block->address == NULL)
+    {
+        return;
+    }
+
+    for (int i = 0; i < block_count; i++)
+    {
+        if (blocks[i].address == block->address &&
+            blocks[i].size == block->size &&
+            !blocks[i].isFree)
+        {
+            blocks[i].isFree = 1;
+            return;
+        }
+    }
 }
 void kfree(struct MemoryBlock *block)
 {
