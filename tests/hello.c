@@ -116,9 +116,72 @@ if (character == EOF)
     buffer[i] = '\0';
 }
 
-void kprint(char text[])
+int koutput_write(const char *text)
 {
-    printf("%s", text);
+    if (text == NULL)
+    {
+        return 1;
+    }
+
+    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+
+    if (output == NULL || output == INVALID_HANDLE_VALUE)
+    {
+        return 1;
+    }
+
+    size_t length = 0;
+
+    while (text[length] != '\0')
+    {
+        length++;
+    }
+
+    size_t offset = 0;
+
+    while (offset < length)
+    {
+        size_t remaining = length - offset;
+
+        DWORD chunk = remaining > (size_t)MAXDWORD
+                    ? MAXDWORD
+                    : (DWORD)remaining;
+
+        DWORD total_written = 0;
+
+        while (total_written < chunk)
+        {
+            DWORD written = 0;
+
+            if (!WriteFile(
+                    output,
+                    text + offset + total_written,
+                    chunk - total_written,
+                    &written,
+                    NULL))
+            {
+                return 1;
+            }
+
+            if (written == 0)
+            {
+                return 1;
+            }
+
+            total_written += written;
+        }
+
+        offset += chunk;
+    }
+
+    return 0;
+}
+
+
+
+void kprint(const char *text)
+{
+    (void)koutput_write(text);
 }
 void kpanic(char error[])
 {
