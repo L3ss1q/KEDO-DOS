@@ -113,11 +113,12 @@ int kinput_read_char(char *character)
 
 
 
+
 void kinput(char buffer[], int size)
 {
     int i = 0;
-    int full = 0;
-    char character = '\0';
+    char character;
+    int enter_pressed = 0;
 
     if (buffer == NULL || size <= 0)
     {
@@ -126,15 +127,16 @@ void kinput(char buffer[], int size)
 
     buffer[0] = '\0';
 
-    while (1)
+    while (kinput_read_char(&character))
     {
-        if (!kinput_read_char(&character))
-        {
-            break;
-        }
-
         if (character == '\r' || character == '\n')
         {
+            if (!enter_pressed)
+            {
+                enter_pressed = 1;
+            }
+
+            /* Stop at the end of the line. */
             break;
         }
 
@@ -143,16 +145,11 @@ void kinput(char buffer[], int size)
             buffer[i++] = character;
             buffer[i] = '\0';
         }
-        else
-        {
-            full = 1;
-        }
     }
 
     buffer[i] = '\0';
-
-    (void)full;
 }
+
 int koutput_write(const char *text)
 {
     if (text == NULL)
