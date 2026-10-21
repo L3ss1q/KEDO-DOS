@@ -93,32 +93,11 @@ void kfree(struct MemoryBlock *block)
     }
 }
 
-int kinput_read_char(char *character)
-{
-    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD bytes_read = 0;
-
-    if (input == NULL || input == INVALID_HANDLE_VALUE)
-    {
-        return 0;
-    }
-
-    if (!ReadFile(input, character, 1, &bytes_read, NULL))
-    {
-        return 0;
-    }
-
-    return bytes_read == 1;
-}
-
-
-
 
 void kinput(char buffer[], int size)
 {
-    int i = 0;
-    char character;
-    int enter_pressed = 0;
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD bytes_read = 0;
 
     if (buffer == NULL || size <= 0)
     {
@@ -127,27 +106,30 @@ void kinput(char buffer[], int size)
 
     buffer[0] = '\0';
 
-    while (kinput_read_char(&character))
+    if (input == NULL || input == INVALID_HANDLE_VALUE)
     {
-        if (character == '\r' || character == '\n')
-        {
-            if (!enter_pressed)
-            {
-                enter_pressed = 1;
-            }
-
-            /* Stop at the end of the line. */
-            break;
-        }
-
-        if (i < size - 1)
-        {
-            buffer[i++] = character;
-            buffer[i] = '\0';
-        }
+        return;
     }
 
-    buffer[i] = '\0';
+    if (!ReadConsoleA(
+            input,
+            buffer,
+            (DWORD)(size - 1),
+            &bytes_read,
+            NULL))
+    {
+        return;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    /* Remove the line ending. */
+    while (bytes_read > 0 &&
+           (buffer[bytes_read - 1] == '\r' ||
+            buffer[bytes_read - 1] == '\n'))
+    {
+        buffer[--bytes_read] = '\0';
+    }
 }
 
 int koutput_write(const char *text)
