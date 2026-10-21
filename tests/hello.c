@@ -112,12 +112,12 @@ int kinput_read_char(char *character)
 }
 
 
+
 void kinput(char buffer[], int size)
 {
     int i = 0;
-    char character;
-    DWORD bytes_read;
-    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    int full = 0;
+    char character = '\0';
 
     if (buffer == NULL || size <= 0)
     {
@@ -126,17 +126,9 @@ void kinput(char buffer[], int size)
 
     buffer[0] = '\0';
 
-    if (input == NULL || input == INVALID_HANDLE_VALUE)
+    while (1)
     {
-        return;
-    }
-
-    while (i < size - 1)
-    {
-        bytes_read = 0;
-
-        if (!ReadConsoleA(input, &character, 1, &bytes_read, NULL)
-            || bytes_read == 0)
+        if (!kinput_read_char(&character))
         {
             break;
         }
@@ -146,22 +138,20 @@ void kinput(char buffer[], int size)
             break;
         }
 
-        buffer[i++] = character;
+        if (i < size - 1)
+        {
+            buffer[i++] = character;
+            buffer[i] = '\0';
+        }
+        else
+        {
+            full = 1;
+        }
     }
 
     buffer[i] = '\0';
 
-    /* Consume the LF following CR, if one is waiting. */
-    if (character == '\r')
-    {
-        DWORD available = 0;
-
-        if (GetNumberOfConsoleInputEvents(input, &available)
-            && available > 0)
-        {
-            /* No extra read needed: ReadConsoleA handles console input. */
-        }
-    }
+    (void)full;
 }
 int koutput_write(const char *text)
 {
