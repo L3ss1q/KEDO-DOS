@@ -101,6 +101,7 @@ void kinput(char buffer[], int size)
         character = getchar();
 if (character == EOF)
 {
+    buffer[i] = '\0';
     return;
 }
         if (character == '\n')
@@ -152,6 +153,43 @@ int strings_equal(char a[], char b[])
 
     return a[i] == b[i];
 }
+
+void kprint_number(int number)
+{
+    char buffer[12];
+    int i = 0;
+    unsigned int value;
+
+    if (number < 0)
+    {
+        kprint("-");
+        value = 0u - (unsigned int)number;
+    }
+    else
+    {
+        value = (unsigned int)number;
+    }
+
+    do
+    {
+        buffer[i] = '0' + (value % 10);
+        value /= 10;
+        i++;
+    }
+    while (value > 0);
+
+    while (i > 0)
+    {
+        char character[2];
+
+        i--;
+        character[0] = buffer[i];
+        character[1] = '\0';
+
+        kprint(character);
+    }
+}
+
 void kmeminfo(void)
 {
     int free_memory = sizeof(kedo_memory) - memory_used;
@@ -170,11 +208,25 @@ void kmeminfo(void)
         }
     }
 
-    printf("Memory pool: %zu bytes\n", sizeof(kedo_memory));
-    printf("Memory used: %d bytes\n", memory_used);
-    printf("Memory available: %d bytes\n", free_memory);
-    printf("Active blocks: %d\n", active_blocks);
-    printf("Free blocks: %d\n", free_blocks);
+    kprint("Memory pool: ");
+    kprint_number(sizeof(kedo_memory));
+    kprint(" bytes\n");
+
+    kprint("Memory used: ");
+    kprint_number(memory_used);
+    kprint(" bytes\n");
+
+    kprint("Memory available: ");
+    kprint_number(free_memory);
+    kprint(" bytes\n");
+
+    kprint("Active blocks: ");
+    kprint_number(active_blocks);
+    kprint("\n");
+
+    kprint("Free blocks: ");
+    kprint_number(free_blocks);
+    kprint("\n");
 }
 void kmemtest(void)
 {
