@@ -367,19 +367,23 @@ while (1)
     if (strings_equal(command, "hello"))
     {
         command_hello();
+        continue;
     }
     else if (strings_equal(command, "help"))
     {
       
         kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    literally anything else: no :3\n");
+    continue;
     }
         else if(strings_equal(command, "ver"))
         {
             kprint("kedo dos version 2.12132034+2.12132034i\n");
+            continue;
         }
             else if(strings_equal(command, "advcom"))
             {
                 kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n    memtest: performs a memory test\n    panic [SYS]: causes a panic\n    lcon: displays current system configuration\n");
+            continue;
             }
                 else if(strings_equal(command, "fr"))
                 {
@@ -388,18 +392,22 @@ while (1)
                     else if (strings_equal(command, "meminfo"))
 {
     kmeminfo();
+    continue;
 }
                         else if(strings_equal(command, "memtest"))
                         {
                             kmemtest();
+                            continue;
                         }
                             else if (strings_equal(command, "sys panic -bcd"))
 {
     kpanic("BCD - Bad Configuration Data");
+    continue;
 }
                                 else if(strings_equal(command, "lcon"))
                                 {
                                     kprint("here, take a \\n.\n");
+                                    continue;
                                 }
     else
     {
