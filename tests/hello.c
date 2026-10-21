@@ -1,5 +1,5 @@
 #include <windows.h>
-#include <stdio.h>
+//NO STDIO.H!!!!!!!!! LET'S GO!
 #include <stddef.h>
 // robus 🤖
 int number = 42;
@@ -92,20 +92,45 @@ void kfree(struct MemoryBlock *block)
         }
     }
 }
+
+int kinput_read_char(char *character)
+{
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD bytes_read = 0;
+
+    if (input == NULL || input == INVALID_HANDLE_VALUE)
+    {
+        return 0;
+    }
+
+    if (!ReadFile(input, character, 1, &bytes_read, NULL))
+    {
+        return 0;
+    }
+
+    return bytes_read == 1;
+}
+
 void kinput(char buffer[], int size)
 {
     int i = 0;
-    int character;
+    char character;
+
+    if (buffer == NULL || size <= 0)
+    {
+        return;
+    }
+
+    buffer[0] = '\0';
 
     while (i < size - 1)
     {
-        character = getchar();
-if (character == EOF)
-{
-    buffer[i] = '\0';
-    return;
-}
-        if (character == '\n')
+        if (!kinput_read_char(&character))
+        {
+            break;
+        }
+
+        if (character == '\r' || character == '\n')
         {
             break;
         }
@@ -116,7 +141,6 @@ if (character == EOF)
 
     buffer[i] = '\0';
 }
-
 int koutput_write(const char *text)
 {
     if (text == NULL)
