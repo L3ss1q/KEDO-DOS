@@ -1,6 +1,7 @@
 #include <windows.h>
 //NO STDIO.H!!!!!!!!! LET'S GO!
 #include <stddef.h>
+int strings_equal(char a[], char b[]);
 // robus 🤖
 int number = 42;
 int *pointer = &number;
