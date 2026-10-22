@@ -327,15 +327,18 @@ void kmeminfo(void)
     kprint_number(free_blocks);
     kprint("\n");
 }
+
 void kmemtest(void)
 {
-    struct MemoryBlock test;
+    struct MemoryBlock first;
+    struct MemoryBlock second;
 
     kprint("Running memory test...\n");
 
-    test = kmalloc(16);
+    /* Test 1: Allocate 16 bytes. */
+    first = kmalloc(16);
 
-    if (test.address == NULL)
+    if (first.address == NULL)
     {
         kprint("FAIL: allocation\n");
         return;
@@ -343,21 +346,66 @@ void kmemtest(void)
 
     kprint("PASS: allocation\n");
 
-    kfree(&test);
-
+    /* Test 2: Free the block. */
+    kfree(&first);
     kprint("PASS: free\n");
 
-    test = kmalloc(16);
+    /* Test 3: Reuse the freed 16-byte block. */
+    second = kmalloc(16);
 
-    if (test.address == NULL)
+    if (second.address == NULL ||
+        second.address != first.address)
     {
-        kprint("FAIL: reuse\n");
+        kprint("FAIL: memory reuse\n");
+
+        if (second.address != NULL)
+            kfree(&second);
+
         return;
     }
 
     kprint("PASS: memory reuse\n");
 
-    kfree(&test);
+    /* Free it again so the next allocation can split it. */
+    kfree(&second);
+
+    /* Test 4: Allocate only 6 bytes from that 16-byte block. */
+    first = kmalloc(6);
+
+    if (first.address == NULL)
+    {
+        kprint("FAIL: split allocation\n");
+        return;
+    }
+
+    if (first.size != 6)
+    {
+        kprint("FAIL: incorrect allocated block size\n");
+        kfree(&first);
+        return;
+    }
+
+    kprint("PASS: split allocation\n");
+
+    /* Test 5: Check that a 10-byte remainder exists. */
+    second = kmalloc(10);
+
+    if (second.address == NULL ||
+        second.address != first.address + 6)
+    {
+        kprint("FAIL: remainder reuse\n");
+        kfree(&first);
+
+        if (second.address != NULL)
+            kfree(&second);
+
+        return;
+    }
+
+    kprint("PASS: remainder reuse\n");
+
+    kfree(&first);
+    kfree(&second);
 
     kprint("Memory test complete.\n");
 }
