@@ -355,7 +355,7 @@ while (1)
 {
     kprint("KEDO> ");
     kinput(command, sizeof(command));
-    kinput(command, sizeof(command));
+    
 
 if (command[0] == '\0')
 {
