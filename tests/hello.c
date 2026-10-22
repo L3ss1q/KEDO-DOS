@@ -421,6 +421,81 @@ void command_read(char filename[])
     }
 }
 
+void command_dir(void)
+{
+    WIN32_FIND_DATAA data;
+    HANDLE search = FindFirstFileA("*", &data);
+    int found = 0;
+
+    if (search == INVALID_HANDLE_VALUE)
+    {
+        kprint("Error: could not list files.\n");
+        return;
+    }
+
+    kprint("Directory listing:\n");
+
+    do
+    {
+        if (strings_equal(data.cFileName, ".") ||
+            strings_equal(data.cFileName, ".."))
+        {
+            continue;
+        }
+
+        kprint("  ");
+        kprint(data.cFileName);
+
+        if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            kprint("/");
+        }
+
+        kprint("\n");
+        found = 1;
+    }
+    while (FindNextFileA(search, &data));
+
+    FindClose(search);
+
+    if (!found)
+    {
+        kprint("  (empty)\n");
+    }
+}
+
+void command_del(char filename[])
+{
+    if (*filename == '\0')
+    {
+        kprint("Usage: del <filename>\n");
+        return;
+    }
+
+    /* Keep this command from deleting directories. */
+    DWORD attributes = GetFileAttributesA(filename);
+
+    if (attributes == INVALID_FILE_ATTRIBUTES)
+    {
+        kprint("Error: file not found.\n");
+        return;
+    }
+
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        kprint("Error: del only deletes files.\n");
+        return;
+    }
+
+    if (!DeleteFileA(filename))
+    {
+        kprint("Error: could not delete file.\n");
+        return;
+    }
+
+    kprint("File deleted successfully.\n");
+}
+
 void kpanic(char error[])
 {
     kprint("\n");
@@ -667,7 +742,7 @@ if (command[0] == '\0')
     else if (strings_equal(command, "help"))
     {
       
-        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    literally anything else: no :3\n    write: makes a file\n    read: reads a fil- BITCH TF U THINK TS DOES!?\n");
+        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    write: makes a file\n    read: reads a fil- BITCH TF U THINK TS DOES!?\n    dir: shows all files\n    del: deletes a file\n");
     continue;
     }
         else if(strings_equal(command, "ver"))
@@ -715,6 +790,18 @@ if (command[0] == '\0')
         command_read(command + 5);
         continue;
     }
+        
+    else if (strings_equal(command, "dir"))
+    {
+        command_dir();
+        continue;
+    }
+    else if (starts_with(command, "del "))
+    {
+        command_del(command + 4);
+        continue;
+    }
+
 
     else
     {
