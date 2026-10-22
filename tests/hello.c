@@ -271,6 +271,156 @@ void kprint(const char *text)
 {
     (void)koutput_write(text);
 }
+
+int starts_with(const char text[], const char prefix[])
+{
+    int i = 0;
+
+    while (prefix[i] != '\0')
+    {
+        if (text[i] != prefix[i])
+        {
+            return 0;
+        }
+
+        i++;
+    }
+
+    return 1;
+}
+
+void command_write(char args[])
+{
+    char *filename = args;
+    char *content;
+    DWORD written = 0;
+    DWORD length = 0;
+
+    /* Find the filename/content separator. */
+    while (*args != '\0' && *args != ' ')
+    {
+        args++;
+    }
+
+    if (*args == '\0')
+    {
+        kprint("Usage: write <filename> <text>\n");
+        return;
+    }
+
+    *args = '\0';
+    content = args + 1;
+
+    while (*content == ' ')
+    {
+        content++;
+    }
+
+    if (*filename == '\0' || *content == '\0')
+    {
+        kprint("Usage: write <filename> <text>\n");
+        return;
+    }
+
+    while (content[length] != '\0')
+    {
+        length++;
+    }
+
+    HANDLE file = CreateFileA(
+        filename,
+        GENERIC_WRITE,
+        0,
+        NULL,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        kprint("Error: could not create file.\n");
+        return;
+    }
+
+    BOOL success = WriteFile(
+        file,
+        content,
+        length,
+        &written,
+        NULL
+    );
+
+    CloseHandle(file);
+
+    if (!success || written != length)
+    {
+        kprint("Error: file write failed.\n");
+        return;
+    }
+
+    kprint("File written successfully.\n");
+}
+
+void command_read(char filename[])
+{
+    char buffer[1024];
+    DWORD bytes_read = 0;
+
+    if (*filename == '\0')
+    {
+        kprint("Usage: read <filename>\n");
+        return;
+    }
+
+    HANDLE file = CreateFileA(
+        filename,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        kprint("Error: could not open file.\n");
+        return;
+    }
+
+    BOOL success = ReadFile(
+        file,
+        buffer,
+        sizeof(buffer) - 1,
+        &bytes_read,
+        NULL
+    );
+
+    CloseHandle(file);
+
+    if (!success)
+    {
+        kprint("Error: file read failed.\n");
+        return;
+    }
+
+    buffer[bytes_read] = '\0';
+
+    kprint(buffer);
+
+    if (bytes_read == 0 ||
+        buffer[bytes_read - 1] != '\n')
+    {
+        kprint("\n");
+    }
+
+    if (bytes_read == sizeof(buffer) - 1)
+    {
+        kprint("[Output limited to 1023 bytes.]\n");
+    }
+}
+
 void kpanic(char error[])
 {
     kprint("\n");
