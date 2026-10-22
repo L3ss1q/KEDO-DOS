@@ -38,12 +38,32 @@ struct MemoryBlock kmalloc(int size)
         return invalid;
     }
 
+    
     // First, try to reuse freed memory.
     for (int i = 0; i < block_count; i++)
     {
         if (blocks[i].isFree && blocks[i].size >= size)
         {
+            // Split the block if there is unused space.
+            if (blocks[i].size > size && block_count < 32)
+            {
+                struct MemoryBlock remainder;
+
+                remainder.address = blocks[i].address + size;
+                remainder.size = blocks[i].size - size;
+                remainder.isFree = 1;
+
+                // Register the unused portion.
+                blocks[block_count] = remainder;
+                block_count++;
+
+                // Keep only the requested size in this block.
+                blocks[i].size = size;
+            }
+
+            // Mark the requested block as occupied.
             blocks[i].isFree = 0;
+
             return blocks[i];
         }
     }
