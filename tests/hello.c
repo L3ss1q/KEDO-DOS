@@ -29,6 +29,57 @@ struct KedoConfig config =
 struct MemoryBlock blocks[32];
 int block_count = 0;
 
+void kcoalesce(void)
+{
+    int i = 0;
+
+    while (i < block_count)
+    {
+        int j = i + 1;
+
+        while (j < block_count)
+        {
+            if (!blocks[i].isFree ||
+                !blocks[j].isFree)
+            {
+                j++;
+                continue;
+            }
+
+            /* Are the two blocks adjacent? */
+            if (blocks[i].address + blocks[i].size
+                    == blocks[j].address ||
+                blocks[j].address + blocks[j].size
+                    == blocks[i].address)
+            {
+                /* Keep the lower memory address. */
+                if (blocks[j].address < blocks[i].address)
+                {
+                    blocks[i].address = blocks[j].address;
+                }
+
+                /* Combine both block sizes. */
+                blocks[i].size += blocks[j].size;
+
+                /* Remove block j from the block table. */
+                for (int k = j; k < block_count - 1; k++)
+                {
+                    blocks[k] = blocks[k + 1];
+                }
+
+                block_count--;
+
+                /* Check this block against the next entry. */
+                continue;
+            }
+
+            j++;
+        }
+
+        i++;
+    }
+}
+
 struct MemoryBlock kmalloc(int size)
 {
     struct MemoryBlock invalid = {NULL, 0, 1};
@@ -108,7 +159,8 @@ void kfree(struct MemoryBlock *block)
             !blocks[i].isFree)
         {
             blocks[i].isFree = 1;
-            return;
+kcoalesce();
+return;
         }
     }
 }
@@ -332,7 +384,8 @@ void kmemtest(void)
 {
     struct MemoryBlock first;
     struct MemoryBlock second;
-
+    struct MemoryBlock merged;
+    
     kprint("Running memory test...\n");
 
     /* Test 1: Allocate 16 bytes. */
@@ -403,11 +456,38 @@ void kmemtest(void)
     }
 
     kprint("PASS: remainder reuse\n");
+    
+    /* Test 6: Free both adjacent blocks. */
+    kfree(&first);
+    kfree(&second);
+
+    kprint("PASS: free split blocks\n");
+
+    /* Test 7: The two blocks should now be merged. */
+    merged = kmalloc(16);
+
+    if (merged.address == NULL ||
+        merged.address != first.address ||
+        merged.size != 16)
+    {
+        kprint("FAIL: block coalescing\n");
+
+        if (merged.address != NULL)
+            kfree(&merged);
+
+        return;
+    }
+
+    kprint("PASS: block coalescing\n");
+
+    kfree(&merged);
+
+    kprint("Memory test complete.\n");
 
     kfree(&first);
     kfree(&second);
 
-    kprint("Memory test complete.\n");
+   return;
 }
 char command[100];
 char *command_pointer = command;
