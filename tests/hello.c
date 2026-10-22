@@ -667,7 +667,7 @@ if (command[0] == '\0')
     else if (strings_equal(command, "help"))
     {
       
-        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    literally anything else: no :3\n");
+        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    literally anything else: no :3\n    write: makes a file\n    read: reads a fil- BITCH TF U THINK TS DOES!?\n");
     continue;
     }
         else if(strings_equal(command, "ver"))
@@ -704,6 +704,18 @@ if (command[0] == '\0')
                                     kprint("here, take a \\n.\n");
                                     continue;
                                 }
+                                    
+    else if (starts_with(command, "write "))
+    {
+        command_write(command + 6);
+        continue;
+    }
+    else if (starts_with(command, "read "))
+    {
+        command_read(command + 5);
+        continue;
+    }
+
     else
     {
         kprint("Unknown command. Try one that is in the designated dictionary [help]\n");
