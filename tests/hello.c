@@ -1,25 +1,52 @@
+
 #include <windows.h>
-//NO STDIO.H!!!!!!!!! LET'S GO!
+// NO STDIO.H!!!!!!!!!! LET'S GO!
 #include <stddef.h>
-int strings_equal(char a[], char b[]);
-// robus 🤖
+
+/*
+    KEDO DOS
+    Codename: Sofya Sobric
+
+    Hosted development build.
+    File commands use a custom KEDO disk image.
+*/
+
+/* =========================================================
+   CONFIGURATION
+   ========================================================= */
+
+#define KEDO_MEMORY_SIZE 1024
+#define KEDO_MAX_BLOCKS 32
+
+#define KEDO_FILE_COUNT 16
+#define KEDO_NAME_SIZE 32
+#define KEDO_FILE_DATA_SIZE 1024
+
+#define KEDO_DISK_FILENAME "kedo.disk"
+
+/* =========================================================
+   GENERAL VARIABLES
+   ========================================================= */
+
 int number = 42;
 int *pointer = &number;
-char kedo_memory[1024];
+
+char kedo_memory[KEDO_MEMORY_SIZE];
 int memory_used = 0;
+
+char command[100];
+
+/* =========================================================
+   CONFIGURATION STRUCTURE
+   ========================================================= */
+
 struct KedoConfig
 {
     int reboot_on_crash;
     int shutdown_confirm;
     int sound_enabled;
 };
-struct MemoryBlock
-{
-    char *address;
-    int size;
-    int isFree;
 
-};
 struct KedoConfig config =
 {
     1,
@@ -27,8 +54,29 @@ struct KedoConfig config =
     1
 };
 
-struct MemoryBlock blocks[32];
+/* =========================================================
+   MEMORY MANAGEMENT
+   ========================================================= */
+
+struct MemoryBlock
+{
+    char *address;
+    int size;
+    int isFree;
+};
+
+struct MemoryBlock blocks[KEDO_MAX_BLOCKS];
 int block_count = 0;
+
+/* Function declarations */
+
+int strings_equal(char a[], char b[]);
+int starts_with(const char text[], const char prefix[]);
+void kcoalesce(void);
+
+/* =========================================================
+   MEMORY COALESCING
+   ========================================================= */
 
 void kcoalesce(void)
 {
@@ -47,22 +95,18 @@ void kcoalesce(void)
                 continue;
             }
 
-            /* Are the two blocks adjacent? */
             if (blocks[i].address + blocks[i].size
                     == blocks[j].address ||
                 blocks[j].address + blocks[j].size
                     == blocks[i].address)
             {
-                /* Keep the lower memory address. */
                 if (blocks[j].address < blocks[i].address)
                 {
                     blocks[i].address = blocks[j].address;
                 }
 
-                /* Combine both block sizes. */
                 blocks[i].size += blocks[j].size;
 
-                /* Remove block j from the block table. */
                 for (int k = j; k < block_count - 1; k++)
                 {
                     blocks[k] = blocks[k + 1];
@@ -70,7 +114,6 @@ void kcoalesce(void)
 
                 block_count--;
 
-                /* Check this block against the next entry. */
                 continue;
             }
 
@@ -81,6 +124,10 @@ void kcoalesce(void)
     }
 }
 
+/* =========================================================
+   MEMORY ALLOCATION
+   ========================================================= */
+
 struct MemoryBlock kmalloc(int size)
 {
     struct MemoryBlock invalid = {NULL, 0, 1};
@@ -90,14 +137,18 @@ struct MemoryBlock kmalloc(int size)
         return invalid;
     }
 
-    
-    // First, try to reuse freed memory.
+    /* Reuse a free block when possible. */
     for (int i = 0; i < block_count; i++)
     {
         if (blocks[i].isFree && blocks[i].size >= size)
         {
-            // Split the block if there is unused space.
-            if (blocks[i].size > size && block_count < 32)
+            /*
+                Split the block if the metadata table
+                has room for another block.
+            */
+
+            if (blocks[i].size > size &&
+                block_count < KEDO_MAX_BLOCKS)
             {
                 struct MemoryBlock remainder;
 
@@ -105,29 +156,26 @@ struct MemoryBlock kmalloc(int size)
                 remainder.size = blocks[i].size - size;
                 remainder.isFree = 1;
 
-                // Register the unused portion.
                 blocks[block_count] = remainder;
                 block_count++;
 
-                // Keep only the requested size in this block.
                 blocks[i].size = size;
             }
 
-            // Mark the requested block as occupied.
             blocks[i].isFree = 0;
 
             return blocks[i];
         }
     }
 
-    // Do not exceed the block table.
-    if (block_count >= 32)
+    /* Check the metadata table limit. */
+    if (block_count >= KEDO_MAX_BLOCKS)
     {
         return invalid;
     }
 
-    // Do not exceed the memory pool.
-    if (size > (int)sizeof(kedo_memory) - memory_used)
+    /* Check the memory pool limit. */
+    if (size > KEDO_MEMORY_SIZE - memory_used)
     {
         return invalid;
     }
@@ -146,6 +194,10 @@ struct MemoryBlock kmalloc(int size)
     return block;
 }
 
+/* =========================================================
+   MEMORY FREEING
+   ========================================================= */
+
 void kfree(struct MemoryBlock *block)
 {
     if (block == NULL || block->address == NULL)
@@ -160,12 +212,17 @@ void kfree(struct MemoryBlock *block)
             !blocks[i].isFree)
         {
             blocks[i].isFree = 1;
-kcoalesce();
-return;
+
+            kcoalesce();
+
+            return;
         }
     }
 }
 
+/* =========================================================
+   CONSOLE INPUT
+   ========================================================= */
 
 void kinput(char buffer[], int size)
 {
@@ -196,7 +253,6 @@ void kinput(char buffer[], int size)
 
     buffer[bytes_read] = '\0';
 
-    /* Remove the line ending. */
     while (bytes_read > 0 &&
            (buffer[bytes_read - 1] == '\r' ||
             buffer[bytes_read - 1] == '\n'))
@@ -204,6 +260,10 @@ void kinput(char buffer[], int size)
         buffer[--bytes_read] = '\0';
     }
 }
+
+/* =========================================================
+   CONSOLE OUTPUT
+   ========================================================= */
 
 int koutput_write(const char *text)
 {
@@ -266,11 +326,35 @@ int koutput_write(const char *text)
     return 0;
 }
 
-
-
 void kprint(const char *text)
 {
     (void)koutput_write(text);
+}
+
+/* =========================================================
+   BASIC COMMANDS
+   ========================================================= */
+
+void command_hello(void)
+{
+    kprint("please use a useful command\n");
+}
+
+int strings_equal(char a[], char b[])
+{
+    int i = 0;
+
+    while (a[i] != '\0' && b[i] != '\0')
+    {
+        if (a[i] != b[i])
+        {
+            return 0;
+        }
+
+        i++;
+    }
+
+    return a[i] == b[i];
 }
 
 int starts_with(const char text[], const char prefix[])
@@ -290,246 +374,9 @@ int starts_with(const char text[], const char prefix[])
     return 1;
 }
 
-void command_write(char args[])
-{
-    char *filename = args;
-    char *content;
-    DWORD written = 0;
-    DWORD length = 0;
-
-    /* Find the filename/content separator. */
-    while (*args != '\0' && *args != ' ')
-    {
-        args++;
-    }
-
-    if (*args == '\0')
-    {
-        kprint("Usage: write <filename> <text>\n");
-        return;
-    }
-
-    *args = '\0';
-    content = args + 1;
-
-    while (*content == ' ')
-    {
-        content++;
-    }
-
-    if (*filename == '\0' || *content == '\0')
-    {
-        kprint("Usage: write <filename> <text>\n");
-        return;
-    }
-
-    while (content[length] != '\0')
-    {
-        length++;
-    }
-
-    HANDLE file = CreateFileA(
-        filename,
-        GENERIC_WRITE,
-        0,
-        NULL,
-        CREATE_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL
-    );
-
-    if (file == INVALID_HANDLE_VALUE)
-    {
-        kprint("Error: could not create file.\n");
-        return;
-    }
-
-    BOOL success = WriteFile(
-        file,
-        content,
-        length,
-        &written,
-        NULL
-    );
-
-    CloseHandle(file);
-
-    if (!success || written != length)
-    {
-        kprint("Error: file write failed.\n");
-        return;
-    }
-
-    kprint("File written successfully.\n");
-}
-
-void command_read(char filename[])
-{
-    char buffer[1024];
-    DWORD bytes_read = 0;
-
-    if (*filename == '\0')
-    {
-        kprint("Usage: read <filename>\n");
-        return;
-    }
-
-    HANDLE file = CreateFileA(
-        filename,
-        GENERIC_READ,
-        FILE_SHARE_READ,
-        NULL,
-        OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL,
-        NULL
-    );
-
-    if (file == INVALID_HANDLE_VALUE)
-    {
-        kprint("Error: could not open file.\n");
-        return;
-    }
-
-    BOOL success = ReadFile(
-        file,
-        buffer,
-        sizeof(buffer) - 1,
-        &bytes_read,
-        NULL
-    );
-
-    CloseHandle(file);
-
-    if (!success)
-    {
-        kprint("Error: file read failed.\n");
-        return;
-    }
-
-    buffer[bytes_read] = '\0';
-
-    kprint(buffer);
-
-    if (bytes_read == 0 ||
-        buffer[bytes_read - 1] != '\n')
-    {
-        kprint("\n");
-    }
-
-    if (bytes_read == sizeof(buffer) - 1)
-    {
-        kprint("[Output limited to 1023 bytes.]\n");
-    }
-}
-
-void command_dir(void)
-{
-    WIN32_FIND_DATAA data;
-    HANDLE search = FindFirstFileA("*", &data);
-    int found = 0;
-
-    if (search == INVALID_HANDLE_VALUE)
-    {
-        kprint("Error: could not list files.\n");
-        return;
-    }
-
-    kprint("Directory listing:\n");
-
-    do
-    {
-        if (strings_equal(data.cFileName, ".") ||
-            strings_equal(data.cFileName, ".."))
-        {
-            continue;
-        }
-
-        kprint("  ");
-        kprint(data.cFileName);
-
-        if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-        {
-            kprint("/");
-        }
-
-        kprint("\n");
-        found = 1;
-    }
-    while (FindNextFileA(search, &data));
-
-    FindClose(search);
-
-    if (!found)
-    {
-        kprint("  (empty)\n");
-    }
-}
-
-void command_del(char filename[])
-{
-    if (*filename == '\0')
-    {
-        kprint("Usage: del <filename>\n");
-        return;
-    }
-
-    /* Keep this command from deleting directories. */
-    DWORD attributes = GetFileAttributesA(filename);
-
-    if (attributes == INVALID_FILE_ATTRIBUTES)
-    {
-        kprint("Error: file not found.\n");
-        return;
-    }
-
-    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
-    {
-        kprint("Error: del only deletes files.\n");
-        return;
-    }
-
-    if (!DeleteFileA(filename))
-    {
-        kprint("Error: could not delete file.\n");
-        return;
-    }
-
-    kprint("File deleted successfully.\n");
-}
-
-void kpanic(char error[])
-{
-    kprint("\n");
-    kprint("KEDO KERNEL PANIC\n");
-    kprint("Error: ");
-    kprint(error);
-    kprint("\n");
-    kprint("System halted.\n");
-
-    while (1)
-    {
-    }
-}
-void command_hello(void)
-{
-    kprint("please use a useful command\n");
-}
-int strings_equal(char a[], char b[])
-{
-    int i = 0;
-
-    while (a[i] != '\0' && b[i] != '\0')
-    {
-        if (a[i] != b[i])
-        {
-            return 0;
-        }
-
-        i++;
-    }
-
-    return a[i] == b[i];
-}
+/* =========================================================
+   NUMBER OUTPUT
+   ========================================================= */
 
 void kprint_number(int number)
 {
@@ -540,6 +387,7 @@ void kprint_number(int number)
     if (number < 0)
     {
         kprint("-");
+
         value = 0u - (unsigned int)number;
     }
     else
@@ -560,6 +408,7 @@ void kprint_number(int number)
         char character[2];
 
         i--;
+
         character[0] = buffer[i];
         character[1] = '\0';
 
@@ -567,9 +416,13 @@ void kprint_number(int number)
     }
 }
 
+/* =========================================================
+   MEMORY INFORMATION
+   ========================================================= */
+
 void kmeminfo(void)
 {
-    int free_memory = sizeof(kedo_memory) - memory_used;
+    int free_memory = KEDO_MEMORY_SIZE - memory_used;
     int active_blocks = 0;
     int free_blocks = 0;
 
@@ -586,7 +439,7 @@ void kmeminfo(void)
     }
 
     kprint("Memory pool: ");
-    kprint_number(sizeof(kedo_memory));
+    kprint_number(KEDO_MEMORY_SIZE);
     kprint(" bytes\n");
 
     kprint("Memory used: ");
@@ -606,15 +459,20 @@ void kmeminfo(void)
     kprint("\n");
 }
 
+/* =========================================================
+   MEMORY TESTS
+   ========================================================= */
+
 void kmemtest(void)
 {
     struct MemoryBlock first;
     struct MemoryBlock second;
     struct MemoryBlock merged;
-    
+
     kprint("Running memory test...\n");
 
-    /* Test 1: Allocate 16 bytes. */
+    /* Test 1: Allocation. */
+
     first = kmalloc(16);
 
     if (first.address == NULL)
@@ -625,11 +483,14 @@ void kmemtest(void)
 
     kprint("PASS: allocation\n");
 
-    /* Test 2: Free the block. */
+    /* Test 2: Freeing. */
+
     kfree(&first);
+
     kprint("PASS: free\n");
 
-    /* Test 3: Reuse the freed 16-byte block. */
+    /* Test 3: Reuse. */
+
     second = kmalloc(16);
 
     if (second.address == NULL ||
@@ -638,58 +499,72 @@ void kmemtest(void)
         kprint("FAIL: memory reuse\n");
 
         if (second.address != NULL)
+        {
             kfree(&second);
+        }
 
         return;
     }
 
     kprint("PASS: memory reuse\n");
 
-    /* Free it again so the next allocation can split it. */
+    /* Free the block for the splitting test. */
+
     kfree(&second);
 
-    /* Test 4: Allocate only 6 bytes from that 16-byte block. */
+    /* Test 4: Splitting. */
+
     first = kmalloc(6);
 
-    if (first.address == NULL)
+    if (first.address == NULL || first.size != 6)
     {
-        kprint("FAIL: split allocation\n");
-        return;
-    }
+        kprint("FAIL: split allocation");
 
-    if (first.size != 6)
-    {
-        kprint("FAIL: incorrect allocated block size\n");
-        kfree(&first);
+        if (first.address != NULL)
+        {
+            kfree(&first);
+        }
+
+        kprint("\n");
         return;
     }
 
     kprint("PASS: split allocation\n");
 
-    /* Test 5: Check that a 10-byte remainder exists. */
+    /* Test 5: Reusing the remainder. */
+
     second = kmalloc(10);
 
     if (second.address == NULL ||
-        second.address != first.address + 6)
+        second.address != first.address + 6 ||
+        second.size != 10)
     {
         kprint("FAIL: remainder reuse\n");
+
         kfree(&first);
 
         if (second.address != NULL)
+        {
             kfree(&second);
+        }
 
         return;
     }
 
     kprint("PASS: remainder reuse\n");
-    
-    /* Test 6: Free both adjacent blocks. */
+
+    /*
+        Freeing both adjacent blocks should coalesce
+        them into one 16-byte block.
+    */
+
     kfree(&first);
     kfree(&second);
 
     kprint("PASS: free split blocks\n");
 
-    /* Test 7: The two blocks should now be merged. */
+    /* Test 6: Coalescing. */
+
     merged = kmalloc(16);
 
     if (merged.address == NULL ||
@@ -699,7 +574,9 @@ void kmemtest(void)
         kprint("FAIL: block coalescing\n");
 
         if (merged.address != NULL)
+        {
             kfree(&merged);
+        }
 
         return;
     }
@@ -709,104 +586,654 @@ void kmemtest(void)
     kfree(&merged);
 
     kprint("Memory test complete.\n");
-
-    kfree(&first);
-    kfree(&second);
-
-   return;
 }
-char command[100];
-char *command_pointer = command;
-/********
-    FUCKING MAIN BITCH
-********/
+
+/* =========================================================
+   KERNEL PANIC
+   ========================================================= */
+
+void kpanic(char error[])
+{
+    kprint("\n");
+    kprint("KEDO KERNEL PANIC\n");
+    kprint("Error: ");
+    kprint(error);
+    kprint("\n");
+    kprint("System halted.\n");
+
+    while (1)
+    {
+    }
+}
+
+/* =========================================================
+   KEDO DISK FORMAT
+   ========================================================= */
+
+struct KedoDiskFile
+{
+    unsigned int used;
+    char name[KEDO_NAME_SIZE];
+    unsigned int size;
+    char data[KEDO_FILE_DATA_SIZE];
+};
+
+struct KedoDisk
+{
+    char magic[8];
+    unsigned int version;
+    struct KedoDiskFile files[KEDO_FILE_COUNT];
+};
+
+/* =========================================================
+   DISK INITIALIZATION AND LOADING
+   ========================================================= */
+
+int kedo_disk_load(struct KedoDisk *disk)
+{
+    HANDLE file;
+    LARGE_INTEGER file_size;
+    DWORD bytes_read = 0;
+
+    file = CreateFileA(
+        KEDO_DISK_FILENAME,
+        GENERIC_READ | GENERIC_WRITE,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        return 0;
+    }
+
+    if (!GetFileSizeEx(file, &file_size))
+    {
+        CloseHandle(file);
+        return 0;
+    }
+
+    /* Initialize a new disk image if empty. */
+
+    if (file_size.QuadPart == 0)
+    {
+        ZeroMemory(disk, sizeof(*disk));
+
+        disk->magic[0] = 'K';
+        disk->magic[1] = 'E';
+        disk->magic[2] = 'D';
+        disk->magic[3] = 'O';
+        disk->magic[4] = 'D';
+        disk->magic[5] = 'S';
+        disk->magic[6] = 'K';
+        disk->magic[7] = '1';
+
+        disk->version = 1;
+
+        DWORD bytes_written = 0;
+
+        BOOL success = WriteFile(
+            file,
+            disk,
+            (DWORD)sizeof(*disk),
+            &bytes_written,
+            NULL
+        );
+
+        CloseHandle(file);
+
+        return success &&
+               bytes_written == sizeof(*disk);
+    }
+
+    /* Refuse unexpected image sizes. */
+
+    if (file_size.QuadPart != sizeof(*disk))
+    {
+        CloseHandle(file);
+        return 0;
+    }
+
+    BOOL success = ReadFile(
+        file,
+        disk,
+        (DWORD)sizeof(*disk),
+        &bytes_read,
+        NULL
+    );
+
+    CloseHandle(file);
+
+    if (!success || bytes_read != sizeof(*disk))
+    {
+        return 0;
+    }
+
+    /* Verify the disk signature. */
+
+    if (disk->magic[0] != 'K' ||
+        disk->magic[1] != 'E' ||
+        disk->magic[2] != 'D' ||
+        disk->magic[3] != 'O' ||
+        disk->magic[4] != 'D' ||
+        disk->magic[5] != 'S' ||
+        disk->magic[6] != 'K' ||
+        disk->magic[7] != '1' ||
+        disk->version != 1)
+    {
+        return 0;
+    }
+
+    /* Validate file metadata before using it. */
+
+    for (int i = 0; i < KEDO_FILE_COUNT; i++)
+    {
+        if (disk->files[i].used > 1)
+        {
+            return 0;
+        }
+
+        if (disk->files[i].used)
+        {
+            int name_terminated = 0;
+
+            for (int j = 0; j < KEDO_NAME_SIZE; j++)
+            {
+                if (disk->files[i].name[j] == '\0')
+                {
+                    name_terminated = 1;
+                    break;
+                }
+            }
+
+            if (!name_terminated ||
+                disk->files[i].name[0] == '\0' ||
+                disk->files[i].size >= KEDO_FILE_DATA_SIZE ||
+                disk->files[i].data[disk->files[i].size] != '\0')
+            {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
+}
+
+/* =========================================================
+   DISK SAVING
+   ========================================================= */
+
+int kedo_disk_save(struct KedoDisk *disk)
+{
+    HANDLE file;
+    DWORD bytes_written = 0;
+
+    file = CreateFileA(
+        KEDO_DISK_FILENAME,
+        GENERIC_WRITE,
+        0,
+        NULL,
+        CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+
+    if (file == INVALID_HANDLE_VALUE)
+    {
+        return 0;
+    }
+
+    BOOL success = WriteFile(
+        file,
+        disk,
+        (DWORD)sizeof(*disk),
+        &bytes_written,
+        NULL
+    );
+
+    CloseHandle(file);
+
+    return success &&
+           bytes_written == sizeof(*disk);
+}
+
+/* =========================================================
+   FILENAME VALIDATION
+   ========================================================= */
+
+int kedo_valid_filename(const char name[])
+{
+    int length = 0;
+
+    if (name == NULL || name[0] == '\0')
+    {
+        return 0;
+    }
+
+    while (name[length] != '\0')
+    {
+        if (name[length] == '/' ||
+            name[length] == '\\' ||
+            name[length] == ':')
+        {
+            return 0;
+        }
+
+        length++;
+    }
+
+    if (length >= KEDO_NAME_SIZE ||
+        strings_equal((char *)name, ".") ||
+        strings_equal((char *)name, ".."))
+    {
+        return 0;
+    }
+
+    return 1;
+}
+
+/* =========================================================
+   WRITE COMMAND
+   ========================================================= */
+
+void command_write(char args[])
+{
+    struct KedoDisk disk;
+
+    char *filename = args;
+    char *content;
+
+    int length = 0;
+    int slot = -1;
+
+    /* Split filename and content. */
+
+    while (*args != '\0' && *args != ' ')
+    {
+        args++;
+    }
+
+    if (*args == '\0')
+    {
+        kprint("Usage: write <filename> <text>\n");
+        return;
+    }
+
+    *args = '\0';
+    content = args + 1;
+
+    while (*content == ' ')
+    {
+        content++;
+    }
+
+    if (!kedo_valid_filename(filename) ||
+        *content == '\0')
+    {
+        kprint("Invalid filename or empty content.\n");
+        return;
+    }
+
+    while (content[length] != '\0')
+    {
+        length++;
+    }
+
+    if (length >= KEDO_FILE_DATA_SIZE)
+    {
+        kprint("Error: file text is too large.\n");
+        return;
+    }
+
+    if (!kedo_disk_load(&disk))
+    {
+        kprint("Error: could not load KEDO disk.\n");
+        return;
+    }
+
+    /* Find an existing file or an empty slot. */
+
+    for (int i = 0; i < KEDO_FILE_COUNT; i++)
+    {
+        if (disk.files[i].used &&
+            strings_equal(disk.files[i].name, filename))
+        {
+            slot = i;
+            break;
+        }
+
+        if (!disk.files[i].used && slot == -1)
+        {
+            slot = i;
+        }
+    }
+
+    if (slot == -1)
+    {
+        kprint("Error: disk is full.\n");
+        return;
+    }
+
+    disk.files[slot].used = 1;
+
+    /* Clear the filename. */
+
+    for (int i = 0; i < KEDO_NAME_SIZE; i++)
+    {
+        disk.files[slot].name[i] = '\0';
+    }
+
+    /* Copy the filename. */
+
+    for (int i = 0; filename[i] != '\0'; i++)
+    {
+        disk.files[slot].name[i] = filename[i];
+    }
+
+    /* Clear the contents. */
+
+    for (int i = 0; i < KEDO_FILE_DATA_SIZE; i++)
+    {
+        disk.files[slot].data[i] = '\0';
+    }
+
+    /* Copy the file contents. */
+
+    for (int i = 0; i < length; i++)
+    {
+        disk.files[slot].data[i] = content[i];
+    }
+
+    disk.files[slot].size = length;
+
+    if (!kedo_disk_save(&disk))
+    {
+        kprint("Error: could not save KEDO disk.\n");
+        return;
+    }
+
+    kprint("File written to KEDO disk.\n");
+}
+
+/* =========================================================
+   READ COMMAND
+   ========================================================= */
+
+void command_read(char filename[])
+{
+    struct KedoDisk disk;
+
+    if (!kedo_valid_filename(filename))
+    {
+        kprint("Usage: read <filename>\n");
+        return;
+    }
+
+    if (!kedo_disk_load(&disk))
+    {
+        kprint("Error: could not load KEDO disk.\n");
+        return;
+    }
+
+    for (int i = 0; i < KEDO_FILE_COUNT; i++)
+    {
+        if (disk.files[i].used &&
+            strings_equal(disk.files[i].name, filename))
+        {
+            kprint(disk.files[i].data);
+            kprint("\n");
+            return;
+        }
+    }
+
+    kprint("Error: file not found on KEDO disk.\n");
+}
+
+/* =========================================================
+   DIRECTORY COMMAND
+   ========================================================= */
+
+void command_dir(void)
+{
+    struct KedoDisk disk;
+    int found = 0;
+
+    if (!kedo_disk_load(&disk))
+    {
+        kprint("Error: could not load KEDO disk.\n");
+        return;
+    }
+
+    kprint("KEDO disk directory:\n");
+
+    for (int i = 0; i < KEDO_FILE_COUNT; i++)
+    {
+        if (disk.files[i].used)
+        {
+            kprint("  ");
+            kprint(disk.files[i].name);
+            kprint("\n");
+
+            found = 1;
+        }
+    }
+
+    if (!found)
+    {
+        kprint("  (empty)\n");
+    }
+}
+
+/* =========================================================
+   DELETE COMMAND
+   ========================================================= */
+
+void command_del(char filename[])
+{
+    struct KedoDisk disk;
+
+    if (!kedo_valid_filename(filename))
+    {
+        kprint("Usage: del <filename>\n");
+        return;
+    }
+
+    if (!kedo_disk_load(&disk))
+    {
+        kprint("Error: could not load KEDO disk.\n");
+        return;
+    }
+
+    for (int i = 0; i < KEDO_FILE_COUNT; i++)
+    {
+        if (disk.files[i].used &&
+            strings_equal(disk.files[i].name, filename))
+        {
+            disk.files[i].used = 0;
+
+            if (!kedo_disk_save(&disk))
+            {
+                kprint("Error: could not save KEDO disk.\n");
+                return;
+            }
+
+            kprint("KEDO file deleted.\n");
+            return;
+        }
+    }
+
+    kprint("Error: file not found on KEDO disk.\n");
+}
+
+/* =========================================================
+   MAIN
+   ========================================================= */
+
 int main(void)
 {
+    kprint("\n");
+    kprint("KEDO DOS - Sofya Sobric\n");
+    kprint("Type help for commands.\n\n");
 
-kprint("\n");  
-
-while (1)
-{
-    kprint("KEDO> ");
-    kinput(command, sizeof(command));
-    
-
-if (command[0] == '\0')
-{
-    continue;
-}
-    if (strings_equal(command, "hello"))
+    while (1)
     {
-        command_hello();
-        continue;
-    }
-    else if (strings_equal(command, "help"))
-    {
-      
-        kprint("Commands:\n    hello: hi ig\n    help: the fuck you think it does?\n    ver: version T_T\n    advcom: Shows developer commands\n    write: makes a file\n    read: reads a fil- BITCH TF U THINK TS DOES!?\n    dir: shows all files\n    del: deletes a file\n");
-    continue;
-    }
-        else if(strings_equal(command, "ver"))
+        kprint("KEDO> ");
+
+        /* Read the command exactly once. */
+
+        kinput(command, sizeof(command));
+
+        if (command[0] == '\0')
+        {
+            continue;
+        }
+
+        /* HELLO */
+
+        if (strings_equal(command, "hello"))
+        {
+            command_hello();
+            continue;
+        }
+
+        /* HELP */
+
+        else if (strings_equal(command, "help"))
+        {
+            kprint(
+                "Commands:\n"
+                "    hello: hi ig\n"
+                "    help: the fuck you think it does?\n"
+                "    ver: version T_T\n"
+                "    advcom: developer commands\n"
+                "    write <name> <text>: write a KEDO file\n"
+                "    read <name>: read a KEDO file\n"
+                "    dir: list KEDO files\n"
+                "    del <name>: delete a KEDO file\n"
+            );
+
+            continue;
+        }
+
+        /* VERSION */
+
+        else if (strings_equal(command, "ver"))
         {
             kprint("kedo dos version 2.12132034+2.12132034i\n");
             continue;
         }
-            else if(strings_equal(command, "advcom"))
-            {
-                kprint("Advanced commands:\n    fr: forces a return and ends the program\n    meminfo: displays memory information\n    memtest: performs a memory test\n    panic [SYS]: causes a panic\n    lcon: displays current system configuration\n");
+
+        /* ADVANCED COMMANDS */
+
+        else if (strings_equal(command, "advcom"))
+        {
+            kprint(
+                "Advanced commands:\n"
+                "    fr: exit the program\n"
+                "    meminfo: display memory information\n"
+                "    memtest: run memory tests\n"
+                "    sys panic -bcd: trigger a test panic\n"
+                "    lcon: display system configuration\n"
+            );
+
             continue;
-            }
-                else if(strings_equal(command, "fr"))
-                {
-                    return 1;
-                }
-                    else if (strings_equal(command, "meminfo"))
-{
-    kmeminfo();
-    continue;
-}
-                        else if(strings_equal(command, "memtest"))
-                        {
-                            kmemtest();
-                            continue;
-                        }
-                            else if (strings_equal(command, "sys panic -bcd"))
-{
-    kpanic("BCD - Bad Configuration Data");
-    continue;
-}
-                                else if(strings_equal(command, "lcon"))
-                                {
-                                    kprint("here, take a \\n.\n");
-                                    continue;
-                                }
-                                    
-    else if (starts_with(command, "write "))
-    {
-        command_write(command + 6);
-        continue;
-    }
-    else if (starts_with(command, "read "))
-    {
-        command_read(command + 5);
-        continue;
-    }
-        
-    else if (strings_equal(command, "dir"))
-    {
-        command_dir();
-        continue;
-    }
-    else if (starts_with(command, "del "))
-    {
-        command_del(command + 4);
-        continue;
-    }
+        }
 
+        /* EXIT */
 
-    else
-    {
-        kprint("Unknown command. Try one that is in the designated dictionary [help]\n");
+        else if (strings_equal(command, "fr"))
+        {
+            return 0;
+        }
+
+        /* MEMORY INFORMATION */
+
+        else if (strings_equal(command, "meminfo"))
+        {
+            kmeminfo();
+            continue;
+        }
+
+        /* MEMORY TEST */
+
+        else if (strings_equal(command, "memtest"))
+        {
+            kmemtest();
+            continue;
+        }
+
+        /* PANIC TEST */
+
+        else if (strings_equal(command, "sys panic -bcd"))
+        {
+            kpanic("BCD - Bad Configuration Data");
+            continue;
+        }
+
+        /* CONFIGURATION */
+
+        else if (strings_equal(command, "lcon"))
+        {
+            kprint("Current configuration:\n");
+
+            kprint("Reboot on crash: ");
+            kprint_number(config.reboot_on_crash);
+            kprint("\n");
+
+            kprint("Shutdown confirmation: ");
+            kprint_number(config.shutdown_confirm);
+            kprint("\n");
+
+            kprint("Sound enabled: ");
+            kprint_number(config.sound_enabled);
+            kprint("\n");
+
+            continue;
+        }
+
+        /* WRITE FILE */
+
+        else if (starts_with(command, "write "))
+        {
+            command_write(command + 6);
+            continue;
+        }
+
+        /* READ FILE */
+
+        else if (starts_with(command, "read "))
+        {
+            command_read(command + 5);
+            continue;
+        }
+
+        /* LIST FILES */
+
+        else if (strings_equal(command, "dir"))
+        {
+            command_dir();
+            continue;
+        }
+
+        /* DELETE FILE */
+
+        else if (starts_with(command, "del "))
+        {
+            command_del(command + 4);
+            continue;
+        }
+
+        /* UNKNOWN COMMAND */
+
+        else
+        {
+            kprint(
+                "Unknown command. "
+                "Try one in the designated dictionary [help].\n"
+            );
+        }
     }
-}
 }
