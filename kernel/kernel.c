@@ -9,6 +9,7 @@
  * This C file documents the command behavior intended to move into a
  * freestanding 16-bit kernel once the compiler/linker/startup ABI are chosen.
  */
+#include "KedoError.h"
 typedef unsigned char u8;
 
 static int streq(const char *a, const char *b) {
