@@ -1,0 +1,731 @@
+; KEDO BIOS kernel - 16-bit real mode
+; Build: nasm -f bin kernel/kernel.asm -o kernel.bin
+; Loaded at physical 0000:1000 by boot/boot.asm.
+bits 16
+org 0x1000
+
+%define MAX_NODES 32
+%define NAME_SIZE 16
+%define DATA_SIZE 128
+
+start:
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov ss, ax
+    mov sp, 0x7B00
+    sti
+    cld
+
+    call fs_init
+    mov si, banner
+    call puts
+.shell:
+    mov si, prompt
+    call puts
+    mov di, line_buffer
+    mov cx, 127
+    call read_line
+    call parse_line
+    cmp byte [command], 0
+    je .shell
+
+    mov si, command
+    mov di, cmd_help
+    call streq
+    jc .help
+    mov si, command
+    mov di, cmd_ver
+    call streq
+    jc .ver
+    mov si, command
+    mov di, cmd_hello
+    call streq
+    jc .hello
+    mov si, command
+    mov di, cmd_cls
+    call streq
+    jc .cls
+    mov si, command
+    mov di, cmd_ls
+    call streq
+    jc .ls
+    mov si, command
+    mov di, cmd_pwd
+    call streq
+    jc .pwd
+    mov si, command
+    mov di, cmd_mkdir
+    call streq
+    jc .mkdir
+    mov si, command
+    mov di, cmd_touch
+    call streq
+    jc .touch
+    mov si, command
+    mov di, cmd_write
+    call streq
+    jc .write
+    mov si, command
+    mov di, cmd_cat
+    call streq
+    jc .cat
+    mov si, command
+    mov di, cmd_rm
+    call streq
+    jc .rm
+    mov si, command
+    mov di, cmd_rmdir
+    call streq
+    jc .rmdir
+    mov si, command
+    mov di, cmd_cd
+    call streq
+    jc .cd
+    mov si, command
+    mov di, cmd_halt
+    call streq
+    jc .halt
+    mov si, command
+    mov di, cmd_exit
+    call streq
+    jc .halt
+    mov si, command
+    mov di, cmd_panic
+    call streq
+    jc .panic
+    mov si, unknown_message
+    call puts
+    jmp .shell
+
+.help:
+    mov si, help_text
+    call puts
+    jmp .shell
+.ver:
+    mov si, version_text
+    call puts
+    jmp .shell
+.hello:
+    mov si, hello_text
+    call puts
+    jmp .shell
+.cls:
+    mov ax, 0x0003
+    int 0x10
+    jmp .shell
+.ls:
+    call fs_list
+    jmp .shell
+.pwd:
+    call fs_pwd
+    jmp .shell
+.mkdir:
+    mov byte [new_type], 1
+    call fs_create
+    jmp .shell
+.touch:
+    mov byte [new_type], 2
+    call fs_create
+    jmp .shell
+.write:
+    call fs_write
+    jmp .shell
+.cat:
+    call fs_cat
+    jmp .shell
+.rm:
+    mov byte [delete_type], 2
+    call fs_delete
+    jmp .shell
+.rmdir:
+    mov byte [delete_type], 1
+    call fs_delete
+    jmp .shell
+.cd:
+    call fs_cd
+    jmp .shell
+.panic:
+    mov si, panic_prefix
+    call puts
+    mov si, arguments
+    call puts
+    mov si, panic_suffix
+    call puts
+.panic_halt:
+    cli
+    hlt
+    jmp .panic_halt
+.halt:
+    mov si, halt_text
+    call puts
+.halt_loop:
+    cli
+    hlt
+    jmp .halt_loop
+
+; ---------------- Console ----------------
+puts:
+    lodsb
+    test al, al
+    jz .done
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    jmp puts
+.done:
+    ret
+
+read_line:
+    ; DI=destination, CX=max bytes excluding NUL
+    xor bx, bx
+.next:
+    xor ah, ah
+    int 0x16
+    cmp al, 13
+    je .enter
+    cmp al, 8
+    je .backspace
+    cmp al, 32
+    jb .next
+    cmp bx, cx
+    jae .next
+    mov [di+bx], al
+    inc bx
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    jmp .next
+.backspace:
+    cmp bx, 0
+    je .next
+    dec bx
+    mov byte [di+bx], 0
+    mov al, 8
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    mov al, ' '
+    int 0x10
+    mov al, 8
+    int 0x10
+    jmp .next
+.enter:
+    mov byte [di+bx], 0
+    mov si, newline
+    call puts
+    ret
+
+; Parse first token into command, remainder into arguments.
+parse_line:
+    mov di, command
+    mov si, line_buffer
+    call skip_spaces
+    mov cx, 31
+.copy_command:
+    lodsb
+    test al, al
+    jz .command_done
+    cmp al, ' '
+    je .command_done
+    cmp al, 9
+    je .command_done
+    cmp cx, 0
+    je .command_done
+    stosb
+    dec cx
+    jmp .copy_command
+.command_done:
+    mov al, 0
+    stosb
+    ; If the command ended at NUL (no argument separator), do not read
+    ; beyond the input buffer.
+    cmp byte [si-1], 0
+    je .no_args
+    call skip_spaces
+    mov di, arguments
+.copy_args:
+    lodsb
+    stosb
+    test al, al
+    jnz .copy_args
+    ret
+.no_args:
+    mov byte [arguments], 0
+    ret
+
+skip_spaces:
+    cmp byte [si], ' '
+    jne .check_tab
+    inc si
+    jmp skip_spaces
+.check_tab:
+    cmp byte [si], 9
+    jne .done
+    inc si
+    jmp skip_spaces
+.done:
+    ret
+
+; Compare DS:SI with DS:DI. CF=1 if equal.
+streq:
+.loop:
+    mov al, [si]
+    cmp al, [di]
+    jne .no
+    test al, al
+    jz .yes
+    inc si
+    inc di
+    jmp .loop
+.yes:
+    stc
+    ret
+.no:
+    clc
+    ret
+
+; ---------------- In-memory filesystem ----------------
+fs_init:
+    mov byte [node_used], 1
+    mov byte [node_type], 1
+    mov byte [node_parent], 0
+    mov byte [node_name], '/'
+    mov byte [node_name+1], 0
+    mov byte [current_dir], 0
+    ret
+
+; Extract first argument token into arg1, rest into arg2.
+split_arguments:
+    mov si, arguments
+    mov di, arg1
+    call skip_spaces
+    mov cx, 31
+.first:
+    lodsb
+    test al, al
+    jz .first_end
+    cmp al, ' '
+    je .first_end
+    cmp al, 9
+    je .first_end
+    cmp cx, 0
+    je .first_end
+    stosb
+    dec cx
+    jmp .first
+.first_end:
+    xor al, al
+    stosb
+    cmp byte [si-1], 0
+    je .no_rest
+    call skip_spaces
+    mov di, arg2
+.rest:
+    lodsb
+    stosb
+    test al, al
+    jnz .rest
+    ret
+.no_rest:
+    mov byte [arg2], 0
+    ret
+
+; Find arg1 in current directory. AL=index or FFh.
+fs_find:
+    xor bx, bx
+    mov bl, 1
+.find_loop:
+    cmp bl, MAX_NODES
+    jae .not_found
+    cmp byte [node_used+bx], 1
+    jne .next
+    mov al, [node_parent+bx]
+    cmp al, [current_dir]
+    jne .next
+    mov si, arg1
+    mov ax, bx
+    mov dx, NAME_SIZE
+    mul dx
+    mov di, node_name
+    add di, ax
+    call streq
+    jc .found
+.next:
+    inc bl
+    jmp .find_loop
+.found:
+    mov al, bl
+    ret
+.not_found:
+    mov al, 0xFF
+    ret
+
+; Create node from arg1 using new_type. Existing names are rejected.
+fs_create:
+    call split_arguments
+    cmp byte [arg1], 0
+    je .usage
+    mov si, arg1
+    xor cx, cx
+.name_length:
+    lodsb
+    test al, al
+    jz .name_ok
+    inc cx
+    cmp cx, NAME_SIZE-1
+    ja .name_too_long
+    jmp .name_length
+.name_ok:
+    call fs_find
+    cmp al, 0xFF
+    jne .exists
+    xor bx, bx
+    mov bl, 1
+.slot:
+    cmp bl, MAX_NODES
+    jae .full
+    cmp byte [node_used+bx], 0
+    je .allocate
+    inc bl
+    jmp .slot
+.allocate:
+    mov byte [node_used+bx], 1
+    mov al, [new_type]
+    mov [node_type+bx], al
+    mov al, [current_dir]
+    mov [node_parent+bx], al
+    ; Clear file-data slot as well, so a reused node cannot expose old data.
+    push bx
+    mov ax, bx
+    mov dx, DATA_SIZE
+    mul dx
+    mov di, node_data
+    add di, ax
+    mov cx, DATA_SIZE
+    xor al, al
+    rep stosb
+    pop bx
+    ; Clear fixed name slot, then copy at most 15 characters.
+    mov ax, bx
+    mov dx, NAME_SIZE
+    mul dx
+    mov di, node_name
+    add di, ax
+    mov cx, NAME_SIZE
+    xor al, al
+    rep stosb
+    mov si, arg1
+    mov ax, bx
+    mov dx, NAME_SIZE
+    mul dx
+    mov di, node_name
+    add di, ax
+    mov cx, NAME_SIZE-1
+.copy_name:
+    lodsb
+    test al, al
+    jz .created
+    stosb
+    loop .copy_name
+.created:
+    mov si, created_message
+    call puts
+    ret
+.exists:
+    mov si, exists_message
+    call puts
+    ret
+.full:
+    mov si, full_message
+    call puts
+    ret
+.name_too_long:
+    mov si, name_too_long_message
+    call puts
+    ret
+.usage:
+    mov si, usage_name
+    call puts
+    ret
+
+fs_list:
+    mov si, list_header
+    call puts
+    xor bx, bx
+    mov bl, 1
+.loop:
+    cmp bl, MAX_NODES
+    jae .done
+    cmp byte [node_used+bx], 1
+    jne .next
+    mov al, [node_parent+bx]
+    cmp al, [current_dir]
+    jne .next
+    cmp byte [node_type+bx], 1
+    jne .file
+    mov si, dir_prefix
+    call puts
+    jmp .name
+.file:
+    mov si, file_prefix
+    call puts
+.name:
+    mov ax, bx
+    mov dx, NAME_SIZE
+    mul dx
+    mov si, node_name
+    add si, ax
+    call puts
+    mov si, newline
+    call puts
+.next:
+    inc bl
+    jmp .loop
+.done:
+    ret
+
+fs_pwd:
+    mov si, slash
+    call puts
+    cmp byte [current_dir], 0
+    je .end
+    xor ax, ax
+    mov al, [current_dir]
+    mov dx, NAME_SIZE
+    mul dx
+    mov si, node_name
+    add si, ax
+    call puts
+.end:
+    mov si, newline
+    call puts
+    ret
+
+fs_cd:
+    call split_arguments
+    cmp byte [arg1], 0
+    jne .lookup
+    mov byte [current_dir], 0
+    ret
+.lookup:
+    mov si, arg1
+    mov di, dotdot
+    call streq
+    jc .parent
+    mov si, arg1
+    mov di, slash
+    call streq
+    jc .root
+    call fs_find
+    cmp al, 0xFF
+    je .missing
+    mov bl, al
+    cmp byte [node_type+bx], 1
+    jne .notdir
+    mov [current_dir], al
+    ret
+.parent:
+    xor bx, bx
+    mov bl, [current_dir]
+    mov al, [node_parent+bx]
+    mov [current_dir], al
+    ret
+.root:
+    mov byte [current_dir], 0
+    ret
+.missing:
+    mov si, missing_message
+    call puts
+    ret
+.notdir:
+    mov si, notdir_message
+    call puts
+    ret
+
+fs_write:
+    call split_arguments
+    cmp byte [arg1], 0
+    je .usage
+    call fs_find
+    cmp al, 0xFF
+    jne .existing
+    mov byte [new_type], 2
+    call fs_create
+    call fs_find
+    cmp al, 0xFF
+    je .done
+.existing:
+    mov bl, al
+    cmp byte [node_type+bx], 1
+    je .isdir
+    ; Clear 128-byte content buffer and copy arg2.
+    mov ax, bx
+    mov dx, DATA_SIZE
+    mul dx
+    mov di, node_data
+    add di, ax
+    mov cx, DATA_SIZE
+    xor al, al
+    rep stosb
+    mov ax, bx
+    mov dx, DATA_SIZE
+    mul dx
+    mov di, node_data
+    add di, ax
+    mov si, arg2
+    mov cx, DATA_SIZE-1
+.copy:
+    lodsb
+    test al, al
+    jz .written
+    stosb
+    loop .copy
+.written:
+    mov si, written_message
+    call puts
+.done:
+    ret
+.isdir:
+    mov si, isdir_message
+    call puts
+    ret
+.usage:
+    mov si, usage_write
+    call puts
+    ret
+
+fs_cat:
+    call split_arguments
+    call fs_find
+    cmp al, 0xFF
+    je .missing
+    mov bl, al
+    cmp byte [node_type+bx], 1
+    je .isdir
+    mov ax, bx
+    mov dx, DATA_SIZE
+    mul dx
+    mov si, node_data
+    add si, ax
+    call puts
+    mov si, newline
+    call puts
+    ret
+.missing:
+    mov si, missing_message
+    call puts
+    ret
+.isdir:
+    mov si, isdir_message
+    call puts
+    ret
+
+fs_delete:
+    call split_arguments
+    call fs_find
+    cmp al, 0xFF
+    je .missing
+    mov [target_node], al
+    mov bl, al
+    mov al, [delete_type]
+    cmp [node_type+bx], al
+    jne .wrong_type
+    ; A directory can only be deleted if empty.
+    cmp byte [delete_type], 1
+    jne .remove
+    xor bh, bh
+    mov bl, 1
+.child_loop:
+    cmp bl, MAX_NODES
+    jae .remove
+    cmp byte [node_used+bx], 1
+    jne .child_next
+    ; Compare against target index stored in target_node.
+    mov al, [target_node]
+    cmp [node_parent+bx], al
+    je .not_empty
+.child_next:
+    inc bl
+    jmp .child_loop
+.remove:
+    mov bl, [target_node]
+    mov byte [node_used+bx], 0
+    mov si, deleted_message
+    call puts
+    ret
+.missing:
+    mov si, missing_message
+    call puts
+    ret
+.wrong_type:
+    mov si, wrong_type_message
+    call puts
+    ret
+.not_empty:
+    mov si, notempty_message
+    call puts
+    ret
+
+; ---------------- Data ----------------
+banner db 13,10,'KEDO DOS BIOS edition',13,10,'Volatile RAM filesystem. Type help.',13,10,0
+prompt db 'KEDO> ',0
+newline db 13,10,0
+slash db '/',0
+dotdot db '..',0
+cmd_help db 'help',0
+cmd_ver db 'ver',0
+cmd_hello db 'hello',0
+cmd_cls db 'cls',0
+cmd_ls db 'ls',0
+cmd_pwd db 'pwd',0
+cmd_mkdir db 'mkdir',0
+cmd_touch db 'touch',0
+cmd_write db 'write',0
+cmd_cat db 'cat',0
+cmd_rm db 'rm',0
+cmd_rmdir db 'rmdir',0
+cmd_cd db 'cd',0
+cmd_halt db 'halt',0
+cmd_exit db 'exit',0
+cmd_panic db 'panic',0
+help_text db 'help ver hello cls ls pwd cd NAME|..|/ mkdir NAME touch NAME',13,10,'write NAME TEXT cat NAME rm NAME rmdir NAME halt',13,10,'RAM filesystem: 31 entries, 15-char names, 127-char files.',13,10,0
+version_text db 'kedo dos version 2.12132034+2.12132034i (BIOS)',13,10,0
+hello_text db 'Hello from KEDO BIOS!',13,10,0
+unknown_message db 'Unknown command. Type help.',13,10,0
+created_message db 'Created.',13,10,0
+exists_message db 'That name already exists.',13,10,0
+full_message db 'Filesystem full.',13,10,0
+name_too_long_message db 'Name too long (maximum 15 characters).',13,10,0
+usage_name db 'Usage: mkdir NAME or touch NAME',13,10,0
+usage_write db 'Usage: write NAME TEXT',13,10,0
+written_message db 'Written.',13,10,0
+missing_message db 'Not found.',13,10,0
+notdir_message db 'Not a directory.',13,10,0
+isdir_message db 'Is a directory.',13,10,0
+deleted_message db 'Deleted.',13,10,0
+wrong_type_message db 'Wrong node type.',13,10,0
+notempty_message db 'Directory not empty.',13,10,0
+panic_prefix db 'KEDO PANIC [255]: ',0
+panic_suffix db 13,10,'System halted.',13,10,0
+halt_text db 'KEDO halted.',13,10,0
+list_header db 'Contents:',13,10,0
+dir_prefix db '[DIR] ',0
+file_prefix db '[FILE] ',0
+
+line_buffer times 128 db 0
+command times 32 db 0
+arguments times 96 db 0
+arg1 times 32 db 0
+arg2 times 96 db 0
+new_type db 0
+delete_type db 0
+target_node db 0
+current_dir db 0
+
+node_used times MAX_NODES db 0
+node_type times MAX_NODES db 0
+node_parent times MAX_NODES db 0
+node_name times MAX_NODES*NAME_SIZE db 0
+node_data times MAX_NODES*DATA_SIZE db 0
