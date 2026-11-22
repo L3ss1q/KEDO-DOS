@@ -28,8 +28,17 @@ start:
     mov cx, 127
     call read_line
     call parse_line
+    mov si, command
+    mov di, cmd_kedo
+    call streq
+    jc .check_kedo_streak
+    mov byte [kedo_streak], 0
     cmp byte [command], 0
     je .shell
+    jmp .dispatch
+.check_kedo_streak:
+    ; The kedo command is handled by the normal dispatcher below.
+.dispatch:
 
     mov si, command
     mov di, cmd_help
@@ -92,6 +101,10 @@ start:
     call streq
     jc .halt
     mov si, command
+    mov di, cmd_kedo
+    call streq
+    jc .kedo
+    mov si, command
     mov di, cmd_panic
     call streq
     jc .panic
@@ -145,6 +158,14 @@ start:
     jmp .shell
 .cd:
     call fs_cd
+    jmp .shell
+.kedo:
+    inc byte [kedo_streak]
+    cmp byte [kedo_streak], 5
+    jb .shell
+    mov byte [kedo_streak], 0
+    mov si, kedo_message
+    call puts
     jmp .shell
 .panic:
     mov si, panic_prefix
@@ -463,6 +484,7 @@ fs_list:
     mov al, [node_parent+bx]
     cmp al, [current_dir]
     jne .next
+    mov [list_index], bl
     cmp byte [node_type+bx], 1
     jne .file
     mov si, dir_prefix
@@ -472,18 +494,80 @@ fs_list:
     mov si, file_prefix
     call puts
 .name:
-    mov ax, bx
+    xor ax, ax
+    mov al, [list_index]
     mov dx, NAME_SIZE
     mul dx
     mov si, node_name
     add si, ax
     call puts
+    cmp byte [node_type+bx], 1
+    je .directory_size
+    ; Count file bytes until NUL, bounded by DATA_SIZE-1.
+    xor ax, ax
+    mov al, [list_index]
+    mov dx, DATA_SIZE
+    mul dx
+    mov si, node_data
+    add si, ax
+    xor cx, cx
+.count_bytes:
+    cmp cx, DATA_SIZE-1
+    jae .show_file_size
+    cmp byte [si], 0
+    je .show_file_size
+    inc si
+    inc cx
+    jmp .count_bytes
+.show_file_size:
+    mov ax, cx
+    call print_u16
+    mov si, bytes_suffix
+    call puts
+    jmp .line_end
+.directory_size:
+    mov si, dir_size_text
+    call puts
+.line_end:
     mov si, newline
     call puts
 .next:
     inc bl
     jmp .loop
 .done:
+    ret
+
+; Print unsigned AX as decimal. Preserves BX and CX.
+print_u16:
+    push bx
+    push cx
+    xor cx, cx
+    mov bx, 10
+.convert:
+    xor dx, dx
+    div bx
+    push dx
+    inc cx
+    test ax, ax
+    jnz .convert
+.emit:
+    pop ax
+    add al, '0'
+    call putc
+    loop .emit
+    pop cx
+    pop bx
+    ret
+
+; Print character in AL using BIOS teletype.
+putc:
+    push bx
+    push cx
+    mov ah, 0x0E
+    mov bh, 0
+    int 0x10
+    pop cx
+    pop bx
     ret
 
 fs_pwd:
@@ -504,6 +588,19 @@ fs_pwd:
     ret
 
 fs_cd:
+    ; Recover safely if current_dir ever points at an unused/non-directory node.
+    xor bx, bx
+    mov bl, [current_dir]
+    cmp bl, 0
+    je .current_ok
+    cmp byte [node_used+bx], 1
+    jne .reset_current
+    cmp byte [node_type+bx], 1
+    jne .reset_current
+    jmp .current_ok
+.reset_current:
+    mov byte [current_dir], 0
+.current_ok:
     call split_arguments
     cmp byte [arg1], 0
     jne .lookup
@@ -677,29 +774,30 @@ dotdot db '..',0
 cmd_help db 'help',0
 cmd_ver db 'ver',0
 cmd_hello db 'hello',0
-cmd_cls db 'cls',0
+cmd_cls db 'clr',0
 cmd_ls db 'ls',0
-cmd_pwd db 'pwd',0
-cmd_mkdir db 'mkdir',0
-cmd_touch db 'touch',0
-cmd_write db 'write',0
-cmd_cat db 'cat',0
-cmd_rm db 'rm',0
-cmd_rmdir db 'rmdir',0
-cmd_cd db 'cd',0
-cmd_halt db 'halt',0
+cmd_pwd db 'wai',0
+cmd_mkdir db 'newdir',0
+cmd_touch db 'blank',0
+cmd_write db 'wri',0
+cmd_cat db 'read',0
+cmd_rm db 'disc',0
+cmd_rmdir db 'deldir',0
+cmd_cd db 'cdir',0
+cmd_halt db 'hlt',0
 cmd_exit db 'exit',0
 cmd_panic db 'panic',0
-help_text db 'help ver hello cls ls pwd cd NAME|..|/ mkdir NAME touch NAME',13,10,'write NAME TEXT cat NAME rm NAME rmdir NAME halt',13,10,'RAM filesystem: 31 entries, 15-char names, 127-char files.',13,10,0
-version_text db 'kedo dos version 2.12132034+2.12132034i (BIOS)',13,10,0
-hello_text db 'Hello from KEDO BIOS!',13,10,0
+cmd_kedo db 'kedo',0
+help_text db 'help: displays this menu', 13, 10, 'ver: shows current version', 13,10,'hello: idfk',13,10, 'clr: clears the screen since you have been so disorganized',13,10, 'ls: lists entries, types, and file sizes in bytes',13,10,'wai: Where Am I command. prints current directory',13,10, 'cdir NAME|..|/: changes directory. make sure to remember where the f*** you are',13,10,'newdir NAME: makes a directory',13,10,'blank NAME: makes a blank file',13,10,'wri NAME TEXT: makes or changes a file',13,10,'read NAME: f***ing reads',13,10,'disc NAME: discombobulates a file (thus deleting it)',13,10,'deldir NAME: deletes a directory.',13,10, 'hlt: halts',13,10,'exit: shuts down but you have to shutdown',13,10,'panic: kernel panics',13,10,'kedo: try it five times in a row',13,10,'RAM filesystem: 31 entries, 15-char names, 127-char files. do not test me.',13,10,0
+version_text db 'kedo dos Benchmark 1 (BIOS)',13,10,0
+hello_text db 'Please just use your computer, I do not want to communicate with you socially for i am an introvert',13,10,0
 unknown_message db 'Unknown command. Type help.',13,10,0
 created_message db 'Created.',13,10,0
 exists_message db 'That name already exists.',13,10,0
 full_message db 'Filesystem full.',13,10,0
 name_too_long_message db 'Name too long (maximum 15 characters).',13,10,0
-usage_name db 'Usage: mkdir NAME or touch NAME',13,10,0
-usage_write db 'Usage: write NAME TEXT',13,10,0
+usage_name db 'Usage: newdir NAME or blank NAME',13,10,0
+usage_write db 'Usage: wri NAME TEXT',13,10,0
 written_message db 'Written.',13,10,0
 missing_message db 'Not found.',13,10,0
 notdir_message db 'Not a directory.',13,10,0
@@ -709,10 +807,13 @@ wrong_type_message db 'Wrong node type.',13,10,0
 notempty_message db 'Directory not empty.',13,10,0
 panic_prefix db 'KEDO PANIC [255]: ',0
 panic_suffix db 13,10,'System halted.',13,10,0
-halt_text db 'KEDO halted.',13,10,0
+halt_text db 'KEDO halted. Please turn off your computer, for the developer was too lazy to add an ACPI',13,10,0
 list_header db 'Contents:',13,10,0
 dir_prefix db '[DIR] ',0
 file_prefix db '[FILE] ',0
+dir_size_text db '  <DIR>',0
+bytes_suffix db ' B',0
+kedo_message db 'SHUT THE F*** UP',13,10,0
 
 line_buffer times 128 db 0
 command times 32 db 0
@@ -723,6 +824,8 @@ new_type db 0
 delete_type db 0
 target_node db 0
 current_dir db 0
+kedo_streak db 0
+list_index db 0
 
 node_used times MAX_NODES db 0
 node_type times MAX_NODES db 0
