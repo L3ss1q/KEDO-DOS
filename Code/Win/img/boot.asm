@@ -1,15 +1,30 @@
 ; KEDO BIOS boot sector
-; Loads 16 sectors from sector 2 (CHS 0/0/2) to 0000:1000.
+; Relocates to 0000:0600, then loads 70 sectors of kernel data from
+; disk sectors 2-18, followed by the next three track-bounded chunks.
+; The filesystem snapshot is reserved at CHS 2/0/1 (LBA 72), outside this load.
 bits 16
-org 0x7C00
+org 0x0600
 
-start:
+boot_entry:
+    ; BIOS entered at 0000:7C00. Copy this sector below the BIOS data area
+    ; before loading the kernel over the original 0000:7C00 location.
+    cli
+    xor ax, ax
+    mov ds, ax
+    mov es, ax
+    mov si, 0x7C00
+    mov di, 0x0600
+    mov cx, 256
+    rep movsw
+    jmp 0x0000:relocated
+
+relocated:
     cli
     xor ax, ax
     mov ds, ax
     mov es, ax
     mov ss, ax
-    mov sp, 0x7C00
+    mov sp, 0x9F00
     sti
     cld
     mov [boot_drive], dl
@@ -17,9 +32,8 @@ start:
     mov si, boot_message
     call print_string
 
-    ; The kernel is deliberately limited to the remaining sectors of track 0.
-    mov ah, 0x02
-    mov al, 17
+    ; CHS 0/0/2, 17 sectors -> physical 0000:1000.
+    mov ax, 0x0211
     mov ch, 0
     mov cl, 2
     mov dh, 0
@@ -28,8 +42,39 @@ start:
     int 0x13
     jc disk_error
 
+    ; CHS 0/1/1, 18 sectors -> physical 0000:3200.
+    mov ax, 0x0212
+    mov ch, 0
+    mov cl, 1
+    mov dh, 1
+    mov dl, [boot_drive]
+    mov bx, 0x3200
+    int 0x13
+    jc disk_error
+
+    ; CHS 1/0/1, 18 sectors -> physical 0000:5600.
+    mov ax, 0x0212
+    mov ch, 1
+    mov cl, 1
+    mov dh, 0
+    mov dl, [boot_drive]
+    mov bx, 0x5600
+    int 0x13
+    jc disk_error
+
+    ; CHS 1/1/1, 17 sectors -> physical 0000:7A00.
+    mov ax, 0x0211
+    mov ch, 1
+    mov cl, 1
+    mov dh, 1
+    mov dl, [boot_drive]
+    mov bx, 0x7A00
+    int 0x13
+    jc disk_error
+
     mov dl, [boot_drive]
     jmp 0x0000:0x1000
+
 disk_error:
     mov si, error_message
     call print_string
