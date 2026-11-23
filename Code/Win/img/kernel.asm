@@ -24,6 +24,7 @@ start:
     mov si, banner
     call puts
 .shell:
+    call fs_save
     mov si, prompt
     call puts
     mov di, line_buffer
@@ -62,6 +63,10 @@ start:
     mov di, cmd_ls
     call streq
     jc .ls
+    mov si, command
+    mov di, cmd_tree
+    call streq
+    jc .tree
     mov si, command
     mov di, cmd_pwd
     call streq
@@ -132,6 +137,9 @@ start:
     jmp .shell
 .ls:
     call fs_list
+    jmp .shell
+.tree:
+    call fs_tree
     jmp .shell
 .pwd:
     call fs_pwd
@@ -309,14 +317,157 @@ streq:
     clc
     ret
 
-; ---------------- In-memory filesystem ----------------
+; ---------------- Persistent filesystem ----------------
+; Snapshot occupies CHS cylinder 2, head 0, sectors 1-10.
+; The bootloader reserves this area and loads the kernel below it.
+; Snapshot layout: 16-byte header + 4704-byte node tables + padding.
+
 fs_init:
+    mov byte [fs_disk_ok], 1
+    call fs_disk_read
+    jc .read_failed
+
+    ; Validate signature, format version, payload size, and root node.
+    mov si, fs_snapshot
+    mov di, fs_magic
+    mov cx, 8
+    repe cmpsb
+    jne .format
+    cmp word [fs_snapshot+8], 1
+    jne .format
+    cmp word [fs_snapshot+10], 4704
+    jne .format
+    cmp byte [node_used], 1
+    jne .format
+    cmp byte [node_type], 1
+    jne .format
+
+    mov byte [current_dir], 0
+    mov byte [fs_dirty], 0
+    ret
+
+.read_failed:
+    mov byte [fs_disk_ok], 0
+    call fs_format
+    mov byte [fs_dirty], 0
+    mov si, disk_read_warning
+    call puts
+    ret
+
+.format:
+    call fs_format
+    ret
+
+fs_format:
+    mov di, node_used
+    mov cx, 4704
+    xor al, al
+    rep stosb
+
+    mov di, fs_snapshot
+    mov si, fs_magic
+    mov cx, 8
+    rep movsb
+    mov word [fs_snapshot+8], 1
+    mov word [fs_snapshot+10], 4704
+    mov dword [fs_snapshot+12], 0
+
     mov byte [node_used], 1
     mov byte [node_type], 1
     mov byte [node_parent], 0
     mov byte [node_name], '/'
     mov byte [node_name+1], 0
     mov byte [current_dir], 0
+    mov byte [fs_dirty], 1
+    ret
+
+; BIOS reads exactly ten sectors into the in-memory snapshot buffer.
+fs_disk_read:
+    push ax
+    push bx
+    push cx
+    push dx
+    push es
+    xor ax, ax
+    mov es, ax
+    mov bx, fs_snapshot
+    mov ax, 0x020A
+    mov ch, 2
+    mov cl, 1
+    xor dh, dh
+    mov dl, [current_drive]
+    int 0x13
+    jc .failed
+    mov byte [fs_io_error], 0
+    jmp .finish
+.failed:
+    mov byte [fs_io_error], 1
+.finish:
+    pop es
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    cmp byte [fs_io_error], 0
+    jne .bad
+    clc
+    ret
+.bad:
+    stc
+    ret
+
+; BIOS writes the ten-sector snapshot to the currently selected drive.
+fs_disk_write:
+    push ax
+    push bx
+    push cx
+    push dx
+    push es
+    xor ax, ax
+    mov es, ax
+    mov bx, fs_snapshot
+    mov ax, 0x030A
+    mov ch, 2
+    mov cl, 1
+    xor dh, dh
+    mov dl, [current_drive]
+    int 0x13
+    jc .failed
+    mov byte [fs_io_error], 0
+    jmp .finish
+.failed:
+    mov byte [fs_io_error], 1
+.finish:
+    pop es
+    pop dx
+    pop cx
+    pop bx
+    pop ax
+    cmp byte [fs_io_error], 0
+    jne .bad
+    clc
+    ret
+.bad:
+    stc
+    ret
+
+; Save only after a successful mutation. A failed initial disk read disables
+; writes, preventing a transient read error from overwriting an unknown disk.
+fs_save:
+    cmp byte [fs_disk_ok], 1
+    jne .done
+    cmp byte [fs_dirty], 1
+    jne .done
+    mov word [fs_snapshot+8], 1
+    mov word [fs_snapshot+10], 4704
+    call fs_disk_write
+    jc .failed
+    mov byte [fs_dirty], 0
+    jmp .done
+.failed:
+    mov si, disk_write_warning
+    call puts
+.done:
     ret
 
 ; Extract first argument token into arg1, rest into arg2.
@@ -453,6 +604,7 @@ fs_create:
     stosb
     loop .copy_name
 .created:
+    mov byte [fs_dirty], 1
     mov si, created_message
     call puts
     ret
@@ -539,6 +691,76 @@ fs_list:
 .done:
     ret
 
+; Recursive tree display. Each stack frame stores its parent index
+; and next candidate node, so nested directories do not overwrite callers.
+fs_tree:
+    mov si, tree_header
+    call puts
+    mov byte [tree_depth], 0
+    xor al, al
+    call fs_tree_walk
+    ret
+
+fs_tree_walk:
+    push bp
+    mov bp, sp
+    sub sp, 4
+    mov [ss:bp-2], al
+    mov word [ss:bp-4], 1
+.loop:
+    mov bx, [ss:bp-4]
+    cmp bx, MAX_NODES
+    jae .done
+    cmp byte [node_used+bx], 1
+    jne .next
+    mov al, [node_parent+bx]
+    cmp al, [ss:bp-2]
+    jne .next
+
+    ; Indent according to recursion depth.
+    xor cx, cx
+    mov cl, [tree_depth]
+.indent:
+    jcxz .prefix
+    mov al, ' '
+    call putc
+    loop .indent
+.prefix:
+    mov bx, [ss:bp-4]
+    cmp byte [node_type+bx], 1
+    jne .file_prefix
+    mov si, dir_prefix
+    call puts
+    jmp .print_name
+.file_prefix:
+    mov si, file_prefix
+    call puts
+.print_name:
+    mov ax, [ss:bp-4]
+    mov dx, NAME_SIZE
+    mul dx
+    mov si, node_name
+    add si, ax
+    call puts
+    mov si, newline
+    call puts
+
+    ; Recurse into directories, preserving this frame's scan index.
+    mov bx, [ss:bp-4]
+    cmp byte [node_type+bx], 1
+    jne .next
+    mov al, bl
+    inc byte [tree_depth]
+    call fs_tree_walk
+    dec byte [tree_depth]
+.next:
+    inc word [ss:bp-4]
+    jmp .loop
+.done:
+    mov sp, bp
+    pop bp
+    ret
+
 ; Print unsigned AX as decimal. Preserves BX and CX.
 print_u16:
     push bx
@@ -573,22 +795,48 @@ putc:
     ret
 
 fs_pwd:
+    ; Collect ancestor indices from current directory to root, then emit
+    ; them in reverse order to display the complete path.
+    xor cx, cx
+    mov al, [current_dir]
+.collect:
+    test al, al
+    jz .emit
+    cmp cx, MAX_NODES-1
+    jae .emit
+    xor ah, ah
+    mov bx, cx
+    mov [path_stack+bx], al
+    inc cx
+    xor bx, bx
+    mov bl, al
+    mov al, [node_parent+bx]
+    jmp .collect
+.emit:
     mov si, slash
     call puts
-    cmp byte [current_dir], 0
-    je .end
+    test cx, cx
+    jz .end
+    dec cx
+.emit_part:
     xor ax, ax
-    mov al, [current_dir]
+    mov bx, cx
+    mov al, [path_stack+bx]
     mov dx, NAME_SIZE
     mul dx
     mov si, node_name
     add si, ax
     call puts
+    cmp cx, 0
+    je .end
+    mov al, '/'
+    call putc
+    dec cx
+    jmp .emit_part
 .end:
     mov si, newline
     call puts
     ret
-
 fs_cd:
     ; Recover safely if current_dir ever points at an unused/non-directory node.
     xor bx, bx
@@ -682,6 +930,7 @@ fs_write:
     stosb
     loop .copy
 .written:
+    mov byte [fs_dirty], 1
     mov si, written_message
     call puts
 .done:
@@ -731,26 +980,11 @@ fs_delete:
     mov al, [delete_type]
     cmp [node_type+bx], al
     jne .wrong_type
-    ; A directory can only be deleted if empty.
-    cmp byte [delete_type], 1
-    jne .remove
-    xor bh, bh
-    mov bl, 1
-.child_loop:
-    cmp bl, MAX_NODES
-    jae .remove
-    cmp byte [node_used+bx], 1
-    jne .child_next
-    ; Compare against target index stored in target_node.
+
+    ; deldir removes the entire subtree, not just empty directories.
     mov al, [target_node]
-    cmp [node_parent+bx], al
-    je .not_empty
-.child_next:
-    inc bl
-    jmp .child_loop
-.remove:
-    mov bl, [target_node]
-    mov byte [node_used+bx], 0
+    call fs_delete_node
+    mov byte [fs_dirty], 1
     mov si, deleted_message
     call puts
     ret
@@ -762,16 +996,48 @@ fs_delete:
     mov si, wrong_type_message
     call puts
     ret
-.not_empty:
-    mov si, notempty_message
-    call puts
+
+; Recursive post-order deletion. A stack frame retains the parent node
+; and scan cursor while child subtrees are removed.
+; Input: AL = node index to remove.
+fs_delete_node:
+    push bp
+    mov bp, sp
+    sub sp, 4
+    mov [ss:bp-2], al
+    mov word [ss:bp-4], 1
+.child_scan:
+    mov bx, [ss:bp-4]
+    cmp bx, MAX_NODES
+    jae .remove_self
+    cmp byte [node_used+bx], 1
+    jne .next_child
+    mov al, [node_parent+bx]
+    cmp al, [ss:bp-2]
+    jne .next_child
+    mov al, bl
+    call fs_delete_node
+.next_child:
+    inc word [ss:bp-4]
+    jmp .child_scan
+.remove_self:
+    mov bx, [ss:bp-2]
+    mov byte [node_used+bx], 0
+    mov sp, bp
+    pop bp
     ret
 
 ; ---------------- Data ----------------
 new_type db 0
 current_drive db 0
 boot_drive db 0
-banner db 13,10,'KEDO DOS BENCHMARK 2',13,10,'Persistent non-recursive filesystem. Type help.',13,10,0
+fs_disk_ok db 0
+fs_dirty db 0
+fs_io_error db 0
+tree_depth db 0
+fs_magic db 'KEDOFS01',0
+path_stack times MAX_NODES db 0
+banner db 13,10,'KEDO DOS BENCHMARK 2',13,10,'Recursive persistent filesystem. Type help.',13,10,0
 prompt db 'KEDO> ',0
 newline db 13,10,0
 slash db '/',0
@@ -781,6 +1047,7 @@ cmd_ver db 'ver',0
 cmd_hello db 'hello',0
 cmd_cls db 'clr',0
 cmd_ls db 'ls',0
+cmd_tree db 'tree',0
 cmd_pwd db 'wai',0
 cmd_mkdir db 'newdir',0
 cmd_touch db 'blank',0
@@ -793,8 +1060,8 @@ cmd_halt db 'hlt',0
 cmd_exit db 'exit',0
 cmd_panic db 'panic',0
 cmd_kedo db 'kedo',0
-help_text db 'help: displays this menu', 13, 10, 'ver: shows current version', 13,10,'hello: idfk',13,10, 'clr: clears the screen since you have been so disorganized',13,10, 'ls: lists entries, types, and file sizes in bytes',13,10,'wai: Where Am I command. prints current directory',13,10, 'cdir NAME|..|/: changes directory. make sure to remember where the f*** you are',13,10,'newdir NAME: makes a directory',13,10,'blank NAME: makes a blank file',13,10,'wri NAME TEXT: makes or changes a file',13,10,'read NAME: f***ing reads',13,10,'disc NAME: discombobulates a file (thus deleting it)',13,10,'deldir NAME: deletes a directory.',13,10, 'hlt: halts',13,10,'exit: shuts down but you have to shutdown',13,10,'panic: kernel panics',13,10,'kedo: try it five times in a row',13,10,'RAM filesystem: 31 entries, 15-char names, 127-char files. do not test me.',13,10,0
-version_text db 'kedo dos Benchmark 1 (BIOS)',13,10,0
+help_text db 'help: displays this menu', 13, 10, 'ver: shows current version', 13,10,'hello: idfk',13,10, 'clr: clears the screen since you have been so disorganized',13,10, 'ls: lists entries in the current directory',13,10,'tree: recursively displays the directory tree',13,10,'wai: Where Am I command. prints current directory',13,10, 'cdir NAME|..|/: changes directory. make sure to remember where the f*** you are',13,10,'newdir NAME: makes a directory',13,10,'blank NAME: makes a blank file',13,10,'wri NAME TEXT: makes or changes a file',13,10,'read NAME: f***ing reads',13,10,'disc NAME: discombobulates a file (thus deleting it)',13,10,'deldir NAME: recursively deletes a directory and its contents.',13,10, 'hlt: halts',13,10,'exit: shuts down but you have to shutdown',13,10,'panic: kernel panics',13,10,'kedo: try it five times in a row',13,10,'Persistent filesystem: 31 entries, 15-char names, 127-char files. tree is recursive.',13,10,0
+version_text db 'kedo dos Benchmark 2 (BIOS)',13,10,0
 hello_text db 'Please just use your computer, I do not want to communicate with you socially for i am an introvert',13,10,0
 unknown_message db 'Unknown command. Type help.',13,10,0
 created_message db 'Created.',13,10,0
@@ -819,6 +1086,9 @@ file_prefix db '[FILE] ',0
 dir_size_text db '  <DIR>',0
 bytes_suffix db ' B',0
 kedo_message db 'SHUT THE F*** UP',13,10,0
+tree_header db 'Directory tree:',13,10,0
+disk_read_warning db 'WARNING: disk read failed; using RAM-only filesystem.',13,10,0
+disk_write_warning db 'WARNING: filesystem save failed; changes remain in RAM.',13,10,0
 
 line_buffer times 128 db 0
 command times 32 db 0
