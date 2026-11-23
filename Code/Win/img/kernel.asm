@@ -825,7 +825,6 @@ command times 32 db 0
 arguments times 96 db 0
 arg1 times 32 db 0
 arg2 times 96 db 0
-new_type db 0
 delete_type db 0
 target_node db 0
 current_dir db 0
