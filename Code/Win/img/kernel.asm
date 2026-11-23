@@ -17,6 +17,7 @@ start:
     mov sp, 0x7B00
     sti
     cld
+    mov [boot_drive], dl
 
     call fs_init
     mov si, banner
