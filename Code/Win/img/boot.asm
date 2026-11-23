@@ -19,7 +19,7 @@ start:
 
     ; The kernel is deliberately limited to the remaining sectors of track 0.
     mov ah, 0x02
-    mov al, 16
+    mov al, 18
     mov ch, 0
     mov cl, 2
     mov dh, 0
