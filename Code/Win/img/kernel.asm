@@ -18,6 +18,7 @@ start:
     sti
     cld
     mov [boot_drive], dl
+    mov [current_drive], dl
 
     call fs_init
     mov si, banner
@@ -767,7 +768,10 @@ fs_delete:
     ret
 
 ; ---------------- Data ----------------
-banner db 13,10,'KEDO DOS BIOS edition',13,10,'Volatile RAM filesystem. Type help.',13,10,0
+new_type db 0
+current_drive db 0
+boot_drive db 0
+banner db 13,10,'KEDO DOS BENCHMARK 2',13,10,'Persistent non-recursive filesystem. Type help.',13,10,0
 prompt db 'KEDO> ',0
 newline db 13,10,0
 slash db '/',0
@@ -827,9 +831,14 @@ target_node db 0
 current_dir db 0
 kedo_streak db 0
 list_index db 0
-
+fs_snapshot:
+    db 'KEDOFS01'
+    dw 1
+    dw 4704
+    dd 0
 node_used times MAX_NODES db 0
 node_type times MAX_NODES db 0
 node_parent times MAX_NODES db 0
 node_name times MAX_NODES*NAME_SIZE db 0
 node_data times MAX_NODES*DATA_SIZE db 0
+times (5120 - 16 - 4704) db 0
