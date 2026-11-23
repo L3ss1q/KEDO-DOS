@@ -28,8 +28,8 @@ start:
     int 0x13
     jc disk_error
 
+    mov dl, [boot_drive]
     jmp 0x0000:0x1000
-
 disk_error:
     mov si, error_message
     call print_string
@@ -50,8 +50,8 @@ print_string:
     ret
 
 boot_drive db 0
-boot_message db 'KEDO BIOS bootloader', 13, 10, 0
-error_message db 'Disk read failed. Check floppy image.', 13, 10, 0
+boot_message db 'KEDO loading...', 13, 10, 0
+error_message db 'Disk read failed. Check image.', 13, 10, 0
 
 times 510 - ($ - $$) db 0
 dw 0xAA55
